@@ -1,6 +1,8 @@
 use anyhow::{Context, bail};
 
-/// Unpacks one compressed stream, stopping at its `0xFF` end byte.
+/// Unpacks one compressed stream, stopping at its `0xFF` end byte. A copy from outside the output
+/// reads whatever RAM held in the game, so those bytes come out as 0; Bowser Castle's road tiles
+/// copy 2 such bytes, into a tile no course uses.
 pub fn decompress(src: &[u8]) -> anyhow::Result<Vec<u8>> {
 	let mut input = src.iter().copied();
 	let mut next = || input.next().context("compressed stream ends early");
@@ -37,16 +39,14 @@ pub fn decompress(src: &[u8]) -> anyhow::Result<Vec<u8>> {
 				out.extend((0..count).map(|i| b.wrapping_add(i as u8)));
 			}
 			4..=6 => {
-				let start = match command {
-					6 => out.len().checked_sub(usize::from(next()?)),
-					_ => Some(usize::from(u16::from_le_bytes([next()?, next()?]))),
+				let (base, back) = match command {
+					6 => (out.len(), usize::from(next()?)),
+					_ => (usize::from(u16::from_le_bytes([next()?, next()?])), 0),
 				};
 				let xor = if command == 5 { 0xFF } else { 0 };
 				for i in 0..count {
-					let b = start
-						.and_then(|start| out.get(start + i))
-						.context("compressed stream copies from beyond its output")?;
-					out.push(b ^ xor);
+					let b = (base + i).checked_sub(back).and_then(|at| out.get(at));
+					out.push(b.copied().unwrap_or(0) ^ xor);
 				}
 			}
 			_ => bail!("unknown compression command {command}"),
@@ -89,9 +89,13 @@ mod tests {
 	#[test]
 	fn decompress_refuses_broken_streams() {
 		assert!(decompress(&[0x01, 1]).is_err());
-		assert!(decompress(&[0x80, 0, 0, 0xFF]).is_err());
-		assert!(decompress(&[0xC0, 1, 0xFF]).is_err());
 		assert!(decompress(&[0xFC, 0, 0xFF]).is_err());
+	}
+
+	#[test]
+	fn decompress_copies_zeros_from_outside_its_output() {
+		let src = [0x00, 7, 0xA1, 0, 1, 0xC2, 4, 0xFF];
+		assert_eq!(decompress(&src).unwrap(), [7, 0xFF, 0xFF, 0, 7, 0xFF]);
 	}
 
 	#[test]

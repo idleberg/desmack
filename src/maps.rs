@@ -36,7 +36,7 @@ const COURSES: [&str; 24] = [
 ];
 
 /// In theme number order.
-const THEMES: [&str; 8] = [
+pub const THEMES: [&str; 8] = [
 	"ghost-valley",
 	"mario-circuit",
 	"donut-plains",
@@ -54,8 +54,8 @@ const OVERLAYS: usize = 0x5D000;
 const PILLARS: usize = 0x4DD15;
 
 /// Where each Region keeps its map tables.
-struct Offsets {
-	track_list: usize,
+pub struct Offsets {
+	pub track_list: usize,
 	overlay_patterns: usize,
 	overlay_sizes: usize,
 	ai_bank: usize,
@@ -64,7 +64,7 @@ struct Offsets {
 }
 
 impl Offsets {
-	fn of(region: Region) -> Offsets {
+	pub fn of(region: Region) -> Offsets {
 		match region {
 			Region::Japan => Offsets {
 				track_list: 0x1E74D,
@@ -95,7 +95,7 @@ impl Offsets {
 }
 
 /// ROM reads that fail instead of panicking when a modified ROM points past its end.
-fn bytes(data: &[u8], at: usize, len: usize) -> anyhow::Result<&[u8]> {
+pub fn bytes(data: &[u8], at: usize, len: usize) -> anyhow::Result<&[u8]> {
 	data.get(at..at + len)
 		.with_context(|| format!("ROM ends before {at:#X}"))
 }
@@ -114,8 +114,16 @@ fn near(data: &[u8], at: usize) -> anyhow::Result<usize> {
 	Ok(at & 0xFF_0000 | word(data, at)?)
 }
 
-fn long(data: &[u8], at: usize) -> anyhow::Result<usize> {
+pub fn long(data: &[u8], at: usize) -> anyhow::Result<usize> {
 	Ok(usize::from(byte(data, at + 2)? & 0x3F) << 16 | word(data, at)?)
+}
+
+/// Decompresses the stream that starts at `at`.
+pub fn stream(data: &[u8], at: usize) -> anyhow::Result<Vec<u8>> {
+	decompress(
+		data.get(at..)
+			.with_context(|| format!("ROM ends before {at:#X}"))?,
+	)
 }
 
 /// x and y in tiles, packed as the hazard and overlay tables pack them.
@@ -133,7 +141,7 @@ pub fn extract(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 
 	let genres = folder.join("maps/genres");
 	fs::create_dir_all(&genres)?;
-	let stream = decompress(bytes(data, GENRES, data.len().saturating_sub(GENRES))?)?;
+	let stream = stream(data, GENRES)?;
 	for (theme, name) in THEMES.into_iter().enumerate() {
 		// The game reads 192 bytes from the theme's offset, which sits 16 bytes before the track
 		// list, then the stream's first 64. Koopa Beach and Rainbow Road run past the stream's
@@ -173,7 +181,7 @@ fn tile_maps(
 	course: usize,
 ) -> anyhow::Result<(Vec<u8>, Vec<u8>)> {
 	let packed = long(data, list + course * 3)?;
-	let tt = decompress(&decompress(bytes(data, packed, data.len() - packed)?)?)?;
+	let tt = decompress(&stream(data, packed)?)?;
 	ensure!(
 		tt.len() == 0x4000,
 		"{} is not 128×128 tiles",

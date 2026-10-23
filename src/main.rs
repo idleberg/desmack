@@ -12,6 +12,7 @@ use clap_complete::{Shell, generate};
 mod decompress;
 mod maps;
 mod rom;
+mod textures;
 use rom::Rom;
 
 #[derive(Parser)]
@@ -228,6 +229,8 @@ fn extract(
 	let (mut done, mut failed) = (Vec::new(), Vec::new());
 	for &category in categories {
 		let result = match category {
+			Category::Tilesets => textures::tilesets(&rom, folder),
+			Category::Skies => textures::skies(&rom, folder),
 			Category::Maps => maps::extract(&rom, folder),
 			_ => continue,
 		};

@@ -68,7 +68,9 @@ desmack [FLAGS] <ROM>...
 - **Tilesets**: one 128×128 PNG per Theme, 16×16 tiles. Tile index = row × 16 + column, and
   Ground is cell 0. The palette has 256 entries, one block of 16 for each of the 16 palettes, so
   every tile is drawn with its own palette.
-- **Skies**: each layer is drawn as it appears in game, not dumped as raw tiles.
+- **Skies**: each layer is drawn as it appears in game, not dumped as raw tiles: near is
+  1024×32, far 512×32. Colour 0 stays transparent; the game shows
+  CGRAM colour 0 behind both.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
@@ -150,6 +152,9 @@ Read a byte `v`. `0xFF` ends the stream. Otherwise the command is `v >> 5` and t
 | 5 | as 4, each byte XOR `0xFF` |
 | 6 | copy from `out_pos - next byte` |
 
+A copy from outside the output reads stale RAM in the game; desmack writes 0. Only Bowser
+Castle's road tiles do this, for 2 bytes in a tile no course uses.
+
 Track maps and the podium are compressed twice. Driver sprites are not compressed. Pointers are
 3 bytes LE: `(b2 & 0x0F) << 16 | b1 << 8 | b0`.
 
@@ -222,11 +227,17 @@ The course byte gives this order:
 
 ### Graphics
 
-- **Road tilesets**: a 256-byte header holding each tile's palette in a nibble, then 32 bytes per
-  tile of linear 4bpp. Each Theme has 192 tiles of its own, and indices 192–255 are shared.
-- **Palettes**: 512 bytes per Theme, 16 palettes × 16 BGR555 colours. 0–7 are for backgrounds and
-  8–15 for sprites.
-- **Skies**: 2bpp tiles at `0x20000`–`0x214ED`.
+- **Road tilesets**: track list group 0. A 256-byte header holding each tile's palette in its high
+  nibble, then 32 bytes per tile of linear 4bpp, low nibble first; a pixel is palette × 16 +
+  colour. Each Theme has up to 192 tiles of its own; streams that stop short leave the rest unused.
+  Indices 192–255 are shared, from the stream at `0x40000`.
+- **Palettes**: track list group 1. 512 bytes per Theme, 16 palettes × 16 BGR555 colours: all of
+  CGRAM. 0–7 are for backgrounds and 8–15 for sprites.
+- **Skies**: track list group 3 holds 2bpp planar tiles (`0x20000`–`0x214ED`), group 4 the layout:
+  24 rows of 32 SNES tile map entries. Rows 0–15 are the near layer, four 32×4 screens side by
+  side; rows 16–23 the far layer, two screens. Colours are Mode 0's: near uses CGRAM 64 + palette
+  × 4 + colour, far 96 + palette × 4 + colour. Ghost Valley's Boos and Rainbow Road's stars are
+  animated in game.
 - **Drivers**: 4bpp planar, 32×32 frames, `0x6000` bytes per driver:
 
   | Driver | Offset |
@@ -265,5 +276,4 @@ The decisions are all made; what's left is research:
 - Where the Effects live: dust, sparks, splashes, smoke, shadows.
 - HUD pieces, the Screens list (title, select screens, podium, ending) and how each screen is built
   from tiles.
-- The sky layer layouts and how they scroll, to draw near and far correctly.
 - Any Japan or Europe offsets still missing from the table above.
