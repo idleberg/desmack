@@ -9,6 +9,9 @@ use anyhow::{Context, bail};
 use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
+mod rom;
+use rom::Rom;
+
 #[derive(Parser)]
 #[command(
 	name = "desmack",
@@ -213,13 +216,13 @@ fn extract(
 	force: bool,
 	tty: bool,
 ) -> anyhow::Result<String> {
-	let data = fs::read(rom).context("can't read it")?;
+	let rom = Rom::parse(fs::read(rom).context("can't read it")?)?;
 	if !may_write(folder, force, tty)? {
 		bail!("skipped, {} exists", folder.display());
 	}
 	fs::create_dir_all(folder)
 		.with_context(|| format!("skipped, can't write to {}", folder.display()))?;
-	Ok(format!("{} bytes, nothing extracted yet", data.len()))
+	Ok(format!("{rom}, nothing extracted yet"))
 }
 
 fn main() -> ExitCode {
