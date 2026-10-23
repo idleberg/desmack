@@ -10,6 +10,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
 mod decompress;
+mod maps;
 mod rom;
 use rom::Rom;
 
@@ -213,7 +214,7 @@ fn may_write(folder: &Path, force: bool, tty: bool) -> anyhow::Result<bool> {
 fn extract(
 	rom: &Path,
 	folder: &Path,
-	_categories: &[Category],
+	categories: &[Category],
 	force: bool,
 	tty: bool,
 ) -> anyhow::Result<String> {
@@ -223,7 +224,28 @@ fn extract(
 	}
 	fs::create_dir_all(folder)
 		.with_context(|| format!("skipped, can't write to {}", folder.display()))?;
-	Ok(format!("{rom}, nothing extracted yet"))
+
+	let (mut done, mut failed) = (Vec::new(), Vec::new());
+	for &category in categories {
+		let result = match category {
+			Category::Maps => maps::extract(&rom, folder),
+			_ => continue,
+		};
+		match result {
+			Ok(()) => done.push(category.to_string()),
+			Err(error) => failed.push(format!("{category} ({error:#})")),
+		}
+	}
+	let mut line = if done.is_empty() {
+		format!("{rom}, nothing extracted")
+	} else {
+		format!("{rom}, extracted {}", done.join(", "))
+	};
+	if !failed.is_empty() {
+		line += &format!(", failed {}", failed.join(", "));
+		bail!(line);
+	}
+	Ok(line)
 }
 
 fn main() -> ExitCode {

@@ -32,10 +32,6 @@ impl fmt::Display for Region {
 
 pub struct Rom {
 	/// Without the copier header, so file offsets match the ROM facts.
-	#[cfg_attr(
-		not(test),
-		expect(dead_code, reason = "the extractors read it from milestone 3")
-	)]
 	pub data: Vec<u8>,
 	pub region: Region,
 	pub revision: u8,

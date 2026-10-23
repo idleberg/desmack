@@ -1,10 +1,6 @@
 use anyhow::{Context, bail};
 
 /// Unpacks one compressed stream, stopping at its `0xFF` end byte.
-#[cfg_attr(
-	not(test),
-	expect(dead_code, reason = "the extractors call it from milestone 4")
-)]
 pub fn decompress(src: &[u8]) -> anyhow::Result<Vec<u8>> {
 	let mut input = src.iter().copied();
 	let mut next = || input.next().context("compressed stream ends early");

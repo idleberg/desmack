@@ -71,11 +71,13 @@ desmack [FLAGS] <ROM>...
 - **Skies**: each layer is drawn as it appears in game, not dumped as raw tiles.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
-- **`hazards.txt`**: one `x y` per line, in tiles. The hazard type follows from the Theme.
+- **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
+  entries. The hazard type follows from the Theme. Battle courses have none.
 - **`ai.txt`**: one line per AI zone: its shape and size in tiles, followed by the zone's AI
   target `x y speed`, with `intersection` appended when the flag is set.
-- **`start.txt`**: one `x y` per Start position.
-- **`genres/<theme>.txt`**: 256 lines, `<hex index> <genre name>`.
+- **`start.txt`**: one `x y` per Start position, in pixels: 8 on GP courses, 2 on battle courses.
+- **`genres/<theme>.txt`**: 256 lines, `<hex index> <genre name>`, with Epic Edit's genre names.
+  An index the ROM doesn't define is `undefined`.
 
 ### Project
 
@@ -165,7 +167,7 @@ The course byte gives this order:
 | 5 | RR | 12 | VL1 | 19 | DP1 |
 | 6 | KB2 | 13 | KB1 | | |
 
-20–23 are the battle courses.
+20–23 are Battle Courses 3, 4, 1 and 2.
 
 **Track list**:
 - The pointer is at `0x1E749`; Europe `0x1E738`, Japan `0x1E74D`.
@@ -181,13 +183,23 @@ The course byte gives this order:
 | Genres | `0x7FDBA` |
 | Hazard positions | `0x5C800` + course × 64 |
 | Object zones | `0x4DB93` |
-| GV pillars | `0x4DD1D` |
+| GV pillar pointers | `0x4DD15` |
 | AI bank byte | `0x1FBD3`; Europe `0x1FB9D`, Japan `0x1FBC4` |
-| AI zone pointers | `0x1FF9B`; Europe `0x1FF6D` |
-| GP Start positions | `0x18C13` |
-| Battle course data | `0x18B4B` |
+| AI zone pointers | `0x1FF9B`; Europe `0x1FF6D`, Japan `0x1FF8C` |
+| Start pointers | `0x18A79`; Europe `0x18A92`, Japan `0x18A8D` |
 | Lap line | `0x180D4` + course × 6 |
 | Overlay | `0x5D000` + course × 128 |
+| Overlay pattern pointers | `0x4F23D`; Europe `0x4F159`, Japan `0x4F0B5` |
+| Overlay pattern sizes | `0x4F384`; Europe `0x4F2A0`, Japan `0x4F1FC` |
+
+- **Genres**: one compressed stream. A Theme's genres are 192 bytes from its offset, a u16 in a
+  table 16 bytes before the track list, then the stream's first 64 bytes. Koopa Beach and
+  Rainbow Road run past the stream's end; their courses don't use those tiles.
+- **Overlay**: 3-byte entries, `FF FF FF` ending the list. Pattern = `b0 & 0x3F`, a u16 pointer
+  into bank 4; size = `b0 >> 6`, as (w, h): 2×2, 3×1, 1×3, 5×5. A pattern byte `0xFF` is
+  transparent. The tile offset is `(b1 | b2 << 8) & 0x3FFF`.
+- **GV pillars**: 3 u16 pointers into bank 4, for GV1, GV2 and GV3. Each list is a 2-byte header,
+  then `x y` bytes in tiles, ending with `00 00`.
 
 - **Hazard positions**: 16 regular entries plus 6 Match Race entries, 2 bytes each, in tiles:
   `x = b0 & 0x7F`, `y = (b1 & 0x3F) << 1 | b0 >> 7`.
@@ -199,9 +211,14 @@ The course byte gives this order:
   - KB: Cheep Cheep
   - BC: Thwomp
   - RR: moving Thwomp
-- **AI**: each zone pointer's AI targets start 0x30 bytes after it. A zone is a shape byte, then
-  values in 2-tile units, with `0xFF` ending the list. A target is x and y in tiles, a speed of
-  0–3, and an intersection flag.
+- **AI**: the target pointers start 0x30 bytes after the zone pointers. A zone is a shape byte,
+  then values in 2-tile units, with `0xFF` ending the list: shape 0 is a rectangle `x y w h`;
+  2, 4, 6 and 8 are triangles `x y leg`, whose right-angle corner (x, y) is at the top left,
+  top right, bottom right and bottom left. A target is 3 bytes: x and y in tiles, then the speed
+  in bits 0–1 and the intersection flag in bit 7.
+- **Start positions**: a u16 per course in bank 1, to a struct whose first u16 points to a
+  record: a routine u16, then x and y in pixels. GP records add an i16 column step: kart k
+  stands at x + (k % 2) × step, y + 24k. Battle records hold one `x y` per player.
 
 ### Graphics
 
@@ -249,5 +266,4 @@ The decisions are all made; what's left is research:
 - HUD pieces, the Screens list (title, select screens, podium, ending) and how each screen is built
   from tiles.
 - The sky layer layouts and how they scroll, to draw near and far correctly.
-- The exact encoding of AI zone shapes.
 - Any Japan or Europe offsets still missing from the table above.
