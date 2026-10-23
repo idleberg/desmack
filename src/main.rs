@@ -9,6 +9,7 @@ use anyhow::{Context, bail};
 use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
+mod decompress;
 mod rom;
 use rom::Rom;
 
