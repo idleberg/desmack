@@ -1,0 +1,30 @@
+[tools]
+hk = "latest"
+pkl = "latest"
+rust = "latest"
+
+[env]
+HK_MISE = 1
+
+[hooks]
+postinstall = "hk install --mise"
+
+[tasks.build]
+description = "Build desmack"
+run = "cargo build --release"
+
+[tasks.format]
+description = "Format Rust code"
+run = "cargo fmt"
+
+[tasks."format:check"]
+description = "Check Rust code formatting"
+run = "cargo fmt --check"
+
+[tasks.lint]
+description = "Lint Rust code with Clippy"
+run = "cargo clippy --all-targets -- --deny warnings"
+
+[tasks.test]
+description = "Run all tests; set SMK_ROM to a ROM to include the integration tests"
+run = "cargo test"

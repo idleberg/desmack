@@ -1,0 +1,6 @@
+# Statically link the MSVC CRT so desmack.exe runs on a clean Windows install
+# without the VC++ redistributable. Without this the binary imports
+# VCRUNTIME140.dll and dies at 0xC0000135 (STATUS_DLL_NOT_FOUND) before main.
+# Gated on target_env, so Linux and macOS builds are unaffected.
+[target.'cfg(target_env = "msvc")']
+rustflags = ["-C", "target-feature=+crt-static"]
