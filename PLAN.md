@@ -73,6 +73,11 @@ desmack [FLAGS] <ROM>...
   CGRAM colour 0 behind both.
 - **Effects**: `sprites/effects/<effect>/NNN.png`, or one folder per Theme when the Theme
   palettes give an effect different colours.
+- **Lakitu**: frames 14–16 are the LAP sign for laps 2–4.
+- **HUD**: `graphics/hud/box/<state>.png` is the player box (32×24) holding `player-1`,
+  `player-2`, each item icon or `empty`; `timer.png` the timer as it starts, with its digits in
+  `timer/`; `counters.png` the lives and coin counters, with their digits in `counters/`;
+  `rank/race/` and `rank/finish/` the rank digits 1–8, white where the game brightens the screen.
 - **Font**: `graphics/font/font.png`, 16×16 glyphs, 4 colours.
 - **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
   at scroll 0; `<screen>/bg<n>.png` holds each layer at full width.
@@ -315,7 +320,29 @@ The course byte gives this order:
 - **Lakitu**: the `0x10000` stream's tiles 16–143 load at OBJ tile `0x40`, 12–15 (the start
   lights) at `0xFB`. `0x5E264` (all Regions) is a table of 14 offsets from itself to
   metasprite records: a count, then x and y (i8), tile and OAM attribute per sprite, then the
-  OAM high bits, 2 per sprite. Palettes 4 and 5. The lap digits are drawn separately.
+  OAM high bits, 2 per sprite. Palettes 4 and 5. Frame 11's last sprite is the lap digit,
+  tile `0xA2`; the game swaps in `0xA1` + the lap for laps 2–4, and the opaque sign hides its
+  left half.
+- **HUD**: the top screen is Mode 0 above line 24 and Mode 7 below, switched by HDMA; the bottom
+  screen's sprites are written to OAM directly at line 109, so OAM dumped at a frame's end holds
+  only those. The HUD's bank 1 tables sit `0x144` bytes earlier in Japan and `0x164` in Europe.
+  - Bar: BG2 rows 24–26 of the sky map (VRAM `0x7800`), 2bpp tiles from `0x112F8` (all
+    Regions) at BG tile `0x80`, BG2 palettes 4–7, which every Theme shares. `$81:B8D6` writes
+    run-length lists to VRAM (byte n: n / 2 words, or one word n / 2 times when n is odd); the
+    top line is at `$81:B826`. The player box's lower lines are copy lists (`$81:B836` player 1,
+    `$81:B84A` player 2) into the buffer at `$0C00`, which is row 25.
+  - Timer (`$81:B991`): three BCD bytes; digit d is tile `0x80|d` over `0x90|d`, `0x8A` and
+    `0x8B` mark minutes and seconds.
+  - Item box: `$81:B43C` puts the icon tile word from `$81:B320` (11 items: mushroom, feather,
+    star, banana, green and red shell, Boo, coin, lightning, a Boo shown when an item is stolen,
+    and a mushroom in palette 7) and the next three tiles into the player box; `0x3CE9` over
+    `0x3CE8` once it is used. The item state is `$0D70` per player, the roulette scripts at
+    `$81:B491`.
+  - Rank: no tiles. HDMA channel 7 writes `$2126`–`$2129` per line from `$7F:E580`, which
+    `0x5E770` (all Regions) unpacks to, and colour math adds grey inside the windows: digits 1–8
+    of 20 lines at x `0xE0`, then 1–8 of 64 lines at x `0xC0`, shown after the finish.
+  - Counters: rows at `$81:BB5F` (count, attribute, x, y, tiles), drawn from (182, 84) with the
+    race sprites; `$81:BAC9` patches in the digits from `$81:BABF`.
 - **Effects**: the race loads `0x903` at OBJ tile 0 (water, grass) and `0x49C19` (Japan and
   Europe `0x49C1C`) at `0x100` (dust, smoke). `0x5EE00`, unpacked to `$7E:2000`, is six
   metasprite tables in a row, each a list of offsets from itself to records in Lakitu's format
@@ -337,8 +364,8 @@ The course byte gives this order:
   Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
   ending line-up, `0x16` course select (Mode 7 and sprites).
-- **Other streams the race loads**: `0x300A8` HUD rank portraits and digits, `0x60016` shadows and
-  small icons, `0x112F8` HUD digits and signs, `0x11C0E` not yet identified. Per-Theme hazard
+- **Other streams the race loads**: `0x300A8` rank portraits and digits, `0x60016` shadows and
+  small icons, `0x11C0E` not yet identified. Per-Theme hazard
   streams go to `$7F:4000` from the table at `$81:EBD3`. The streams in the table at `$81:F47E`
   (`0x49801`, `0x61E28`, `0x76301`, …) are music, not graphics.
 - **Decompressor**: `$84:E09E` (A = bank, Y = address, X = destination in `$7F`) and
@@ -354,7 +381,8 @@ The decisions are all made; what's left is research:
 - Driver frame names: which angle and set each frame is.
 - The ending extras of the Cast.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
-- HUD pieces: how each is drawn (the coin counter is hand-coded at `$81:BAC9`, digits from the
-  table at `$81:BABF`).
-- The podium and ending screens, and the Lakitu lap digits.
+- The finish: the rank ladder of portraits (OAM 0–7) and the LAP TIME panel.
+- Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
+  is named `unused`.
+- The podium and ending screens.
 - Any Japan or Europe offsets still missing from the table above.

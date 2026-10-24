@@ -236,12 +236,12 @@ fn extract(
 			Category::Hazards => sprites::hazards(&rom, folder),
 			Category::Cast => sprites::cast(&rom, folder),
 			Category::Effects => sprites::effects(&rom, folder),
+			Category::Hud => graphics::hud(&rom, folder),
 			Category::Font => graphics::font(&rom, folder),
 			Category::Screens => graphics::screens(&rom, folder),
 			Category::Tilesets => textures::tilesets(&rom, folder),
 			Category::Skies => textures::skies(&rom, folder),
 			Category::Maps => maps::extract(&rom, folder),
-			_ => continue,
 		};
 		match result {
 			Ok(()) => done.push(category.to_string()),

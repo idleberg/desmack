@@ -107,7 +107,7 @@ _Avoid_: particle, FX
 ## Around the race
 
 **HUD**:
-What is drawn over a race: timer, rank, lap counter, item box.
+What is drawn over a race: timer, rank, the player box that holds the item, lives and coins. Laps show on Lakitu's sign, not in the HUD.
 _Avoid_: overlay, UI
 
 **Font**:

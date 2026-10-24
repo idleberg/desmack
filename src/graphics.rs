@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::ensure;
+use anyhow::{Context, ensure};
 
-use crate::maps::{bytes, stream};
+use crate::maps::{bytes, stream, word};
 use crate::rom::{Region, Rom};
-use crate::textures::{colours, write_png};
+use crate::sprites::{LAKITU_THEME, Sprite, draw, race_tiles};
+use crate::textures::{colours, palette, write_png};
 
 /// 256 glyphs of 2bpp planar tiles, which the game loads as OBJ tiles 0–255. Japan's has kana
 /// where the others have more Latin letters.
@@ -58,6 +59,63 @@ const CUP_FONT: usize = 0x40;
 
 /// The visible height of a screen.
 const HEIGHT: usize = 224;
+
+/// The race HUD's 2bpp tiles, from BG tile `0x80`: timer digits, the player box and item icons.
+/// The HUD is a bar on BG2 of the top screen, which is Mode 0, so its colours start at 32.
+const HUD_TILES: usize = 0x112F8;
+const HUD_FIRST: usize = 0x80;
+const HUD_COLOURS: usize = 32;
+/// The bar's palette and priority, which the game fills it with before writing tiles.
+const BAR: u16 = 0x3C00;
+/// The HUD's tables are in bank `$81`, which sits `0x144` bytes earlier in Japan's ROM and
+/// `0x164` in Europe's.
+fn hud_table(region: Region, usa: usize) -> usize {
+	usa - match region {
+		Region::Usa => 0,
+		Region::Japan => 0x144,
+		Region::Europe => 0x164,
+	}
+}
+/// The bar's top line as a run-length list the game writes to VRAM, then each player's box's
+/// lower two lines as a copy list, which go to column 18.
+const BAR_TOP: usize = 0x1B826;
+const BOXES: [(&str, usize); 2] = [("player-1", 0x1B836), ("player-2", 0x1B84A)];
+const BOX_COLUMN: usize = 18;
+/// An item's icon is a tile word, drawn with the next tile beside it and the two after below,
+/// inside the box. Once the item is used, the box holds these two tile words instead.
+const ICONS: usize = 0x1B320;
+const ICON_NAMES: [&str; 11] = [
+	"mushroom",
+	"feather",
+	"star",
+	"banana",
+	"green-shell",
+	"red-shell",
+	"boo",
+	"coin",
+	"lightning",
+	"stolen",
+	"unused",
+];
+const EMPTY: [u16; 2] = [0x3CE9, 0x3CE8];
+/// A timer digit is tile `0x80` + d over `0x90` + d; the marks after minutes and seconds have
+/// only a top half.
+const TIMER_TOP: u16 = 0x80;
+const TIMER_BOTTOM: u16 = 0x90;
+const MINUTES: u16 = 0x8A;
+const SECONDS: u16 = 0x8B;
+const BLANK: u16 = 0x8F;
+
+/// The rank is no tile: per line, HDMA sets both colour windows, and colour math adds grey inside
+/// them. Each line is window 1's left and right, then window 2's; a window whose left is past its
+/// right is off. First the digits 1–8 drawn during the race, then those drawn after the finish.
+const RANKS: usize = 0x5E770;
+const RANK_SETS: [(&str, usize, u8, usize); 2] = [("race", 20, 0xE0, 16), ("finish", 64, 0xC0, 64)];
+
+/// The coin and lives counters: rows of sprites, each a count, an attribute byte, x and y, and
+/// a tile per sprite, until a 0. The game patches digits into them from the digit table.
+const COUNTERS: usize = 0x1BB5F;
+const COUNTER_DIGITS: usize = 0x1BABF;
 
 pub fn font(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let glyphs = stream(&rom.data, FONT)?;
@@ -138,6 +196,240 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	)
 }
 
+pub fn hud(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+	let dir = folder.join("graphics/hud");
+	let palette = palette(rom, LAKITU_THEME)?;
+	let mut tiles = vec![0; 0x100 * 16];
+	let hud = stream(&rom.data, HUD_TILES)?;
+	ensure!(hud.len() <= 0x80 * 16, "the HUD tiles run long");
+	tiles[HUD_FIRST * 16..][..hud.len()].copy_from_slice(&hud);
+	let at = |usa| hud_table(rom.region, usa);
+
+	// The player box, as the game draws it, then with each item and empty.
+	let top = run_length(&rom.data, at(BAR_TOP))?;
+	let top = bytes_to_words(&top)?;
+	ensure!(
+		top.len() >= BOX_COLUMN + 4,
+		"the bar's top line stops short"
+	);
+	let top = top[BOX_COLUMN..BOX_COLUMN + 4].to_vec();
+	fs::create_dir_all(dir.join("box"))?;
+	let mut player = Vec::new();
+	for (name, list) in BOXES {
+		let lines = copy_list(&rom.data, at(list))?;
+		ensure!(lines.len() >= 64 + 8, "{name}'s box stops short");
+		let lower = [lines[..8].to_vec(), lines[64..72].to_vec()].map(|l| bytes_to_words(&l));
+		let [middle, bottom] = lower;
+		let rows = vec![top.clone(), middle?, bottom?];
+		write_block(
+			&dir.join(format!("box/{name}.png")),
+			&tiles,
+			&rows,
+			&palette,
+		)?;
+		player.push(rows);
+	}
+	let with = |inner: [u16; 4]| {
+		let mut rows = player[0].clone();
+		rows[1][1..3].copy_from_slice(&inner[..2]);
+		rows[2][1..3].copy_from_slice(&inner[2..]);
+		rows
+	};
+	for (k, name) in ICON_NAMES.into_iter().enumerate() {
+		let e = word(&rom.data, at(ICONS) + k * 2)? as u16;
+		let rows = with([e, e + 1, e + 2, e + 3]);
+		write_block(
+			&dir.join(format!("box/{name}.png")),
+			&tiles,
+			&rows,
+			&palette,
+		)?;
+	}
+	let [upper, lower] = EMPTY;
+	let rows = with([upper, upper, lower, lower]);
+	write_block(&dir.join("box/empty.png"), &tiles, &rows, &palette)?;
+
+	// The timer as it starts, and its digits.
+	fs::create_dir_all(dir.join("timer"))?;
+	let digit = |d: u16| [BAR | TIMER_TOP | d, BAR | TIMER_BOTTOM | d];
+	let [zero, under] = digit(0);
+	let rows = vec![
+		vec![
+			zero,
+			zero,
+			BAR | MINUTES,
+			zero,
+			zero,
+			BAR | SECONDS,
+			zero,
+			zero,
+		],
+		vec![
+			under,
+			under,
+			BAR | BLANK,
+			under,
+			under,
+			BAR | BLANK,
+			under,
+			under,
+		],
+	];
+	write_block(&dir.join("timer.png"), &tiles, &rows, &palette)?;
+	for d in 0..10 {
+		let [upper, lower] = digit(d);
+		let rows = vec![vec![upper], vec![lower]];
+		write_block(&dir.join(format!("timer/{d}.png")), &tiles, &rows, &palette)?;
+	}
+
+	// The rank digits, white where the game brightens the screen.
+	let ranks = stream(&rom.data, RANKS)?;
+	let mut start = 0;
+	for (set, lines, left, width) in RANK_SETS {
+		fs::create_dir_all(dir.join("rank").join(set))?;
+		for rank in 1..=8 {
+			let digit = bytes(&ranks, start, lines * 4)?;
+			let pixels: Vec<u8> = digit
+				.chunks(4)
+				.flat_map(|w| {
+					(0..width).map(move |x| {
+						let x = left.wrapping_add(x as u8);
+						u8::from(w[0] <= x && x <= w[1] || w[2] <= x && x <= w[3])
+					})
+				})
+				.collect();
+			write_png(
+				&dir.join(format!("rank/{set}/{rank}.png")),
+				width as u32,
+				lines as u32,
+				&[0, 0, 0, 255, 255, 255],
+				&pixels,
+			)?;
+			start += lines * 4;
+		}
+	}
+
+	// The coin and lives counters as the game first draws them, and their digits.
+	let race = race_tiles(rom)?;
+	let mut sprites = Vec::new();
+	let mut row = at(COUNTERS);
+	loop {
+		let [head] = bytes(&rom.data, row, 1)?.try_into()?;
+		if head == 0 {
+			break;
+		}
+		ensure!(
+			head & 0x60 == 0,
+			"a counter row steps down or uses 16×16 sprites"
+		);
+		let [attr, x, y] = bytes(&rom.data, row + 1, 3)?.try_into()?;
+		let count = usize::from(head);
+		for (i, &tile) in bytes(&rom.data, row + 4, count)?.iter().enumerate() {
+			sprites.push(Sprite {
+				x: i32::from(x) + i as i32 * 8,
+				y: i32::from(y),
+				tile: u16::from(tile) | u16::from(attr) << 8,
+				big: false,
+			});
+		}
+		row += 4 + count;
+	}
+	let attr = sprites
+		.first()
+		.context("the counters have no sprites")?
+		.tile & 0xFF00;
+	let (width, height, pixels) = draw(&sprites, &race)?;
+	write_png(&dir.join("counters.png"), width, height, &palette, &pixels)?;
+	fs::create_dir_all(dir.join("counters"))?;
+	for (d, &tile) in bytes(&rom.data, at(COUNTER_DIGITS), 10)?.iter().enumerate() {
+		let digit = Sprite {
+			x: 0,
+			y: 0,
+			tile: u16::from(tile) | attr,
+			big: false,
+		};
+		let (width, height, pixels) = draw(&[digit], &race)?;
+		write_png(
+			&dir.join(format!("counters/{d}.png")),
+			width,
+			height,
+			&palette,
+			&pixels,
+		)?;
+	}
+	Ok(())
+}
+
+/// A list the game writes to VRAM: a byte n, then n / 2 words when n is even, or one word to
+/// repeat n / 2 times when it is odd, until a 0. Returns the bytes written.
+fn run_length(data: &[u8], mut at: usize) -> anyhow::Result<Vec<u8>> {
+	let mut out = Vec::new();
+	loop {
+		let [n] = bytes(data, at, 1)?.try_into()?;
+		at += 1;
+		let count = usize::from(n / 2);
+		match n {
+			0 => return Ok(out),
+			_ if n % 2 == 1 => {
+				out.extend(bytes(data, at, 2)?.repeat(count));
+				at += 2;
+			}
+			_ => {
+				out.extend(bytes(data, at, count * 2)?);
+				at += count * 2;
+			}
+		}
+	}
+}
+
+/// A list the game copies into a tile map buffer: words, until one with the top bit set, whose low
+/// byte skips that many bytes, or ends the list when 0. Returns the bytes written, skips as 0.
+fn copy_list(data: &[u8], mut at: usize) -> anyhow::Result<Vec<u8>> {
+	let mut out = Vec::new();
+	loop {
+		let w = word(data, at)?;
+		at += 2;
+		if w & 0x8000 == 0 {
+			out.extend((w as u16).to_le_bytes());
+		} else if w & 0xFF == 0 {
+			return Ok(out);
+		} else {
+			out.resize(out.len() + (w & 0xFF), 0);
+		}
+	}
+}
+
+fn bytes_to_words(bytes: &[u8]) -> anyhow::Result<Vec<u16>> {
+	ensure!(
+		bytes.len().is_multiple_of(2),
+		"a tile map line has an odd length"
+	);
+	Ok(bytes
+		.chunks(2)
+		.map(|b| u16::from_le_bytes([b[0], b[1]]))
+		.collect())
+}
+
+/// Writes rows of HUD tile map entries as one image.
+fn write_block(path: &Path, tiles: &[u8], rows: &[Vec<u16>], palette: &[u8]) -> anyhow::Result<()> {
+	let width = rows[0].len() * 8;
+	let mut pixels = vec![0; width * rows.len() * 8];
+	for (r, row) in rows.iter().enumerate() {
+		for (c, &e) in row.iter().enumerate() {
+			for (i, p) in tile(tiles, e, 2, HUD_COLOURS)?.into_iter().enumerate() {
+				pixels[(r * 8 + i / 8) * width + c * 8 + i % 8] = p;
+			}
+		}
+	}
+	write_png(
+		path,
+		width as u32,
+		(rows.len() * 8) as u32,
+		palette,
+		&pixels,
+	)
+}
+
 /// Writes each layer as `<name>/bg<n>.png`, BG1 first, and the screen as `<name>.png`: the layers'
 /// first 256 columns stacked, BG1 in front. Tile priorities are left out.
 fn write_screen(dir: &Path, name: &str, palette: &[u8], layers: &[Vec<u8>]) -> anyhow::Result<()> {
@@ -185,25 +477,36 @@ fn layer(
 		for column in 0..screens * 32 {
 			let at = (column / 32 * 32 * 32 + row * 32 + column % 32) * 2;
 			let e = bytes(map, at, 2)?;
-			let e = usize::from(e[0]) | usize::from(e[1]) << 8;
-			let palette = base + ((e >> 10 & 7) << bpp);
-			for y in 0..8 {
-				let line = if e & 0x8000 != 0 { 7 - y } else { y };
-				let tile = bytes(
-					tiles,
-					(e & 0x3FF) * bpp * 8 + line * 2,
-					(bpp / 2 - 1) * 16 + 2,
-				)?;
-				for x in 0..8 {
-					let bit = if e & 0x4000 != 0 { x } else { 7 - x };
-					let v = (0..bpp).fold(0, |v, plane| {
-						v | (tile[plane / 2 * 16 + plane % 2] >> bit & 1) << plane
-					});
-					if v != 0 {
-						pixels[(row * 8 + y) * width + column * 8 + x] =
-							(palette | usize::from(v)) as u8;
-					}
+			let e = u16::from(e[0]) | u16::from(e[1]) << 8;
+			for (i, p) in tile(tiles, e, bpp, base)?.into_iter().enumerate() {
+				if p != 0 {
+					pixels[(row * 8 + i / 8) * width + column * 8 + i % 8] = p;
 				}
+			}
+		}
+	}
+	Ok(pixels)
+}
+
+/// The 8×8 pixels of a tile map entry, as [`layer`] colours them; 0 is transparent.
+fn tile(tiles: &[u8], e: u16, bpp: usize, base: usize) -> anyhow::Result<[u8; 64]> {
+	let e = usize::from(e);
+	let palette = base + ((e >> 10 & 7) << bpp);
+	let mut pixels = [0; 64];
+	for y in 0..8 {
+		let line = if e & 0x8000 != 0 { 7 - y } else { y };
+		let planes = bytes(
+			tiles,
+			(e & 0x3FF) * bpp * 8 + line * 2,
+			(bpp / 2 - 1) * 16 + 2,
+		)?;
+		for x in 0..8 {
+			let bit = if e & 0x4000 != 0 { x } else { 7 - x };
+			let v = (0..bpp).fold(0, |v, plane| {
+				v | (planes[plane / 2 * 16 + plane % 2] >> bit & 1) << plane
+			});
+			if v != 0 {
+				pixels[y * 8 + x] = (palette | usize::from(v)) as u8;
 			}
 		}
 	}
@@ -229,6 +532,19 @@ mod tests {
 	}
 
 	#[test]
+	fn run_length_and_copy_lists() {
+		// Two literal words, then one repeated three times.
+		let list = [0x04, 1, 0, 2, 0, 0x07, 3, 0, 0x00];
+		assert_eq!(
+			run_length(&list, 0).unwrap(),
+			[1, 0, 2, 0, 3, 0, 3, 0, 3, 0]
+		);
+		// A word, a 2-byte skip, a word.
+		let list = [1, 0, 0x02, 0x80, 2, 0, 0x00, 0x80];
+		assert_eq!(copy_list(&list, 0).unwrap(), [1, 0, 0, 0, 2, 0]);
+	}
+
+	#[test]
 	fn smk_rom_graphics() {
 		let Ok(path) = std::env::var("SMK_ROM") else {
 			return;
@@ -237,6 +553,7 @@ mod tests {
 		let folder = std::env::temp_dir().join(format!("desmack-graphics-{}", std::process::id()));
 		font(&rom, &folder).unwrap();
 		screens(&rom, &folder).unwrap();
+		hud(&rom, &folder).unwrap();
 		let graphics = folder.join("graphics");
 		let size = |path: &str| {
 			let reader = png::Decoder::new(fs::File::open(graphics.join(path)).unwrap())
@@ -249,6 +566,11 @@ mod tests {
 		assert_eq!(size("screens/title/bg2.png"), (512, 224));
 		assert_eq!(size("screens/driver-select/bg4.png"), (256, 224));
 		assert_eq!(size("screens/cup-select.png"), (256, 224));
+		assert_eq!(size("hud/box/star.png"), (32, 24));
+		assert_eq!(size("hud/timer.png"), (64, 16));
+		assert_eq!(size("hud/rank/race/8.png"), (16, 20));
+		assert_eq!(size("hud/rank/finish/1.png"), (64, 64));
+		assert_eq!(size("hud/counters.png"), (40, 16));
 		fs::remove_dir_all(&folder).unwrap();
 	}
 }

@@ -146,7 +146,11 @@ const RACE_SPRITES: usize = 0x10000;
 const LAKITU: usize = 0x5E264;
 const LAKITU_FRAMES: usize = 14;
 /// Lakitu's palette and his lights' are the same in every Theme.
-const LAKITU_THEME: usize = MARIO_CIRCUIT;
+pub const LAKITU_THEME: usize = MARIO_CIRCUIT;
+/// The frame with the LAP sign. Its last sprite is the digit, tile `0xA2`; for laps 2–4 the game
+/// swaps in `0xA1` + the lap, which shows from behind the sign.
+const LAP_SIGN: usize = 11;
+const LAP_DIGIT: u16 = 0xA1;
 
 /// The race's effect tiles: water and grass at OBJ tile 0, dust and smoke at `0x100`.
 const EFFECT_TILES: usize = 0x903;
@@ -175,11 +179,11 @@ const EFFECTS: [(&str, usize, u16); 9] = [
 
 /// One OAM entry: a position, a tile word (tile, palette, flips) and whether it is 16×16.
 #[derive(Clone, Copy)]
-struct Sprite {
-	x: i32,
-	y: i32,
-	tile: u16,
-	big: bool,
+pub struct Sprite {
+	pub x: i32,
+	pub y: i32,
+	pub tile: u16,
+	pub big: bool,
 }
 
 pub fn items(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
@@ -238,19 +242,31 @@ pub fn hazards(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	Ok(())
 }
 
-pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+/// OBJ tiles 0–255 as the race loads its shared sprites.
+pub fn race_tiles(rom: &Rom) -> anyhow::Result<Vec<u8>> {
 	let stream = stream(&rom.data, RACE_SPRITES)?;
 	ensure!(stream.len() >= 144 * 32, "race sprites stop short");
 	let mut tiles = vec![0; 0x100 * 32];
 	tiles[0x40 * 32..0xC0 * 32].copy_from_slice(&stream[16 * 32..144 * 32]);
 	tiles[0xFB * 32..0xFF * 32].copy_from_slice(&stream[12 * 32..16 * 32]);
-	let frames = (0..LAKITU_FRAMES)
+	Ok(tiles)
+}
+
+/// Lakitu's frames, then the LAP sign for laps 2–4.
+pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+	let mut frames = (0..LAKITU_FRAMES)
 		.map(|k| metasprite(&rom.data, LAKITU + word(&rom.data, LAKITU + k * 2)?))
 		.collect::<anyhow::Result<Vec<_>>>()?;
+	for lap in 2..=4 {
+		let mut sign = frames[LAP_SIGN].clone();
+		let digit = sign.last_mut().context("the LAP sign has no sprites")?;
+		digit.tile = digit.tile & 0xFF00 | (LAP_DIGIT + lap);
+		frames.push(sign);
+	}
 	write_frames(
 		&folder.join("sprites/cast/lakitu"),
 		&frames,
-		&tiles,
+		&race_tiles(rom)?,
 		&palette(rom, LAKITU_THEME)?,
 	)
 }
@@ -552,7 +568,7 @@ fn write_frames(
 /// Draws sprites from 4bpp planar OBJ tiles, cropped to their bounds. A 16×16 sprite is tiles
 /// t, t + 1, t + 16 and t + 17, and the first sprite drawn wins, as in OAM. Colours are CGRAM's
 /// sprite half: 128 + palette × 16 + colour.
-fn draw(sprites: &[Sprite], tiles: &[u8]) -> anyhow::Result<(u32, u32, Vec<u8>)> {
+pub fn draw(sprites: &[Sprite], tiles: &[u8]) -> anyhow::Result<(u32, u32, Vec<u8>)> {
 	let size = |s: &Sprite| if s.big { 16 } else { 8 };
 	let left = sprites.iter().map(|s| s.x).min().unwrap_or(0);
 	let top = sprites.iter().map(|s| s.y).min().unwrap_or(0);
@@ -641,7 +657,7 @@ mod tests {
 				.count()
 		};
 		assert_eq!(count("drivers/luigi"), FRAMES);
-		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES);
+		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES + 3);
 		assert_eq!(count("effects/smoke"), 48);
 		assert_eq!(count("effects/spray"), THEMES.len());
 		assert_eq!(count("effects/spray/koopa-beach"), 48);
