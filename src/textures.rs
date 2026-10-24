@@ -16,7 +16,7 @@ const PALETTE: usize = 1;
 const SKY_TILES: usize = 3;
 const SKY_LAYOUT: usize = 4;
 
-fn theme_stream(rom: &Rom, group: usize, theme: usize) -> anyhow::Result<Vec<u8>> {
+pub fn theme_stream(rom: &Rom, group: usize, theme: usize) -> anyhow::Result<Vec<u8>> {
 	let list = long(&rom.data, Offsets::of(rom.region).track_list)?;
 	stream(
 		&rom.data,
@@ -25,7 +25,7 @@ fn theme_stream(rom: &Rom, group: usize, theme: usize) -> anyhow::Result<Vec<u8>
 }
 
 /// The Theme's 256 BGR555 colours as RGB, which is all of CGRAM.
-fn palette(rom: &Rom, theme: usize) -> anyhow::Result<Vec<u8>> {
+pub fn palette(rom: &Rom, theme: usize) -> anyhow::Result<Vec<u8>> {
 	let palette = theme_stream(rom, PALETTE, theme)?;
 	ensure!(
 		palette.len() == 512,

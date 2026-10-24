@@ -104,7 +104,7 @@ fn byte(data: &[u8], at: usize) -> anyhow::Result<u8> {
 	Ok(bytes(data, at, 1)?[0])
 }
 
-fn word(data: &[u8], at: usize) -> anyhow::Result<usize> {
+pub fn word(data: &[u8], at: usize) -> anyhow::Result<usize> {
 	let b = bytes(data, at, 2)?;
 	Ok(usize::from(b[0]) | usize::from(b[1]) << 8)
 }

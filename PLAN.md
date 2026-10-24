@@ -258,12 +258,38 @@ The course byte gives this order:
   | Asset | Offset |
   |---|---|
   | Items | `0x40594` |
-  | Chain Chomp | `0x60000` |
+  | Chain Chomp, read at the driver select screen | `0x60000` |
   | Lakitu, coin, shadow | `0x10000` |
   | Font | `0x70000` |
   | Title | `0x71996` |
   | Podium | `0x737DA` |
 
+- **Sprite frames**: a frame record starts with a sprite routine in bank 0 (USA `0xBC0F`, Japan
+  and Europe `0xBC34` for the first). By offset from it: `0x00`/`0x08` draw 2 16×16 sprites,
+  `0x0D`/`0x15` 2 8×8, `0x6F`/`0x77` 4 16×16, `0x7C`/`0x84` 4 8×8, `0x147`–`0x157` one 16×16,
+  `0x15F`–`0x16F` one 8×8; `0xAD4` draws nothing. 2- and 4-sprite records then hold a pointer to
+  (y, x) i16 offsets and one to tile words (tile in bits 0–8, palette 9–11, h-flip 14, v-flip
+  15); 1-sprite records hold the tile word. A 16×16 sprite is tiles t, t + 1, t + 16, t + 17.
+- **Hazards**: a Theme's 57 tiles (track list group 2) load at OBJ tile `0xC0`. Each hazard has a
+  script: two op words, then 12 frame pointers, one per size, of which the game uses 11. The game
+  XORs a value into the tile words, which changes the palette:
+
+  | Hazard | Graphics, palette | Scripts (USA; Europe +`0x25`) | XOR |
+  |---|---|---|---|
+  | Pipe | MC, MC (VL is the same) | `0xE582` | 0 |
+  | Orange pipe (DP1) | MC, DP | `0xE582` | `0x400` |
+  | Pillar | GV | `0xE716` (Japan `0xE71C`) | 0 |
+  | Monty Mole, peeking and jumping | DP | `0xE3BC`, `0xE3D8` | 0 |
+  | Piranha Plant, two frames | CI | `0xE0BC`, `0xE0D8` | 0 |
+  | Cheep Cheep, two frames | KB | `0xE0BC`, `0xE0D8` | 0 |
+  | Thwomp, and its shadow | BC | `0xE2C3`, `0xED2B` (Japan `0xED31`) | `0x600`, 0 |
+
+  Japan's other scripts are at Europe's offsets. Rainbow Road's Thwomps are Bowser Castle's,
+  cycling through all 8 palettes. Pillars pad frames with OBJ tile `0x84`, a blank 16×16 block.
+- **Items**: `0x40594` holds 6 blocks of 640 bytes: banana, two shell spin frames, poison
+  mushroom, fireball, egg. Each is four 16×16 frames of 4 consecutive tiles, then four 8×8
+  frames; the game copies one into OBJ tile `0x160` per size. Palettes, from any Theme: banana,
+  shell and fireball 6, red shell, mushroom and egg 5.
 - About 28 code offsets differ between Regions; Epic Edit's `Offsets.cs` lists them, one table per
   Region. The data banks are mostly identical.
 
