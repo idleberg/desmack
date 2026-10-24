@@ -77,7 +77,9 @@ desmack [FLAGS] <ROM>...
 - **HUD**: `graphics/hud/box/<state>.png` is the player box (32×24) holding `player-1`,
   `player-2`, each item icon or `empty`; `timer.png` the timer as it starts, with its digits in
   `timer/`; `counters.png` the lives and coin counters, with their digits in `counters/`;
-  `rank/race/` and `rank/finish/` the rank digits 1–8, white where the game brightens the screen.
+  `rank/race/` and `rank/finish/` the rank digits 1–8, white where the game brightens the screen;
+  `ladder/<driver>-<face>.png` each driver's `neutral`, `happy` and `sad` face (16×16), and
+  `ladder/<rank>.png` the finish ladder's digits (8×16), with `-red` and `-orange` flash colours.
 - **Font**: `graphics/font/font.png`, 16×16 glyphs, 4 colours.
 - **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
   at scroll 0; `<screen>/bg<n>.png` holds each layer at full width.
@@ -343,6 +345,14 @@ The course byte gives this order:
     of 20 lines at x `0xE0`, then 1–8 of 64 lines at x `0xC0`, shown after the finish.
   - Counters: rows at `$81:BB5F` (count, attribute, x, y, tiles), drawn from (182, 84) with the
     race sprites; `$81:BAC9` patches in the digits from `$81:BABF`.
+  - Finish ladder: `0x30000` (all Regions, unpacked to `$7F:C000`) is 4bpp tiles in rows of 16:
+    the happy, sad and neutral faces of the 8 drivers, then digits 1–8 (`0x60` + d over `0x70` +
+    d). The race copies the neutral faces and digits to OBJ tile `0x120` for the top screen and
+    the bottom's own table. After the finish, OAM 0–7 hold ranks 1–4 on the top screen and 5–8
+    (`$0420`) on the bottom: a 16×16 digit sprite (tile `0x140` + slot) with the face over its
+    right half, tile `0x120` + 2 × driver in the driver's sprite palette. Every 8 frames the face
+    flips to the happy one (ranks 1–4) or the sad one, which USA `$80:8D87` uploads to `0x144`
+    + 2 × slot. A digit may flash through palettes 1, 1, 5 and 6 (USA `$80:8C91`).
 - **Effects**: the race loads `0x903` at OBJ tile 0 (water, grass) and `0x49C19` (Japan and
   Europe `0x49C1C`) at `0x100` (dust, smoke). `0x5EE00`, unpacked to `$7E:2000`, is six
   metasprite tables in a row, each a list of offsets from itself to records in Lakitu's format
@@ -364,7 +374,7 @@ The course byte gives this order:
   Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
   ending line-up, `0x16` course select (Mode 7 and sprites).
-- **Other streams the race loads**: `0x300A8` rank portraits and digits, `0x60016` shadows and
+- **Other streams the race loads**: `0x60016` shadows and
   small icons, `0x11C0E` not yet identified. Per-Theme hazard
   streams go to `$7F:4000` from the table at `$81:EBD3`. The streams in the table at `$81:F47E`
   (`0x49801`, `0x61E28`, `0x76301`, …) are music, not graphics.
@@ -381,7 +391,7 @@ The decisions are all made; what's left is research:
 - Driver frame names: which angle and set each frame is.
 - The ending extras of the Cast.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
-- The finish: the rank ladder of portraits (OAM 0–7) and the LAP TIME panel.
+- The finish: the LAP TIME panel.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
 - The podium and ending screens.

@@ -115,7 +115,7 @@ impl Bank0 {
 
 /// The drivers in the game's order, which the bank table follows, with their sprite palettes: two
 /// drivers share each of sprite palettes 8–11.
-const DRIVERS: [(&str, u16); 8] = [
+pub const DRIVERS: [(&str, u16); 8] = [
 	("mario", 1),
 	("luigi", 2),
 	("bowser", 0),

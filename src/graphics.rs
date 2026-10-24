@@ -5,7 +5,7 @@ use anyhow::{Context, ensure};
 
 use crate::maps::{bytes, stream, word};
 use crate::rom::{Region, Rom};
-use crate::sprites::{LAKITU_THEME, Sprite, draw, race_tiles};
+use crate::sprites::{DRIVERS, LAKITU_THEME, Sprite, draw, race_tiles};
 use crate::textures::{colours, palette, write_png};
 
 /// 256 glyphs of 2bpp planar tiles, which the game loads as OBJ tiles 0–255. Japan's has kana
@@ -116,6 +116,16 @@ const RANK_SETS: [(&str, usize, u8, usize); 2] = [("race", 20, 0xE0, 16), ("fini
 /// a tile per sprite, until a 0. The game patches digits into them from the digit table.
 const COUNTERS: usize = 0x1BB5F;
 const COUNTER_DIGITS: usize = 0x1BABF;
+
+/// The finish ladder's 4bpp tiles in rows of 16: three rows of the drivers' 16×16 faces, in the
+/// drivers' order, then the digits 1–8, each tile `0x60` + d over `0x70` + d. After the finish,
+/// each rank shows its digit with the driver's face beside it, which flips to the happy face for
+/// ranks 1–4 and the sad one for 5–8 every 8 frames. A digit is in sprite palette 1, or flashes
+/// through palettes 1, 1, 5 and 6, two frames each.
+const LADDER: usize = 0x30000;
+const FACES: [&str; 3] = ["happy", "sad", "neutral"];
+const LADDER_DIGIT: u16 = 0x60;
+const LADDER_PALETTES: [(&str, u16); 3] = [("", 1), ("-red", 5), ("-orange", 6)];
 
 pub fn font(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let glyphs = stream(&rom.data, FONT)?;
@@ -357,6 +367,38 @@ pub fn hud(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 			&pixels,
 		)?;
 	}
+
+	// The finish ladder: each driver's faces, and the rank digits.
+	let ladder = stream(&rom.data, LADDER)?;
+	ensure!(ladder.len() == 120 * 32, "the ladder is not 120 tiles");
+	fs::create_dir_all(dir.join("ladder"))?;
+	for (row, face) in FACES.into_iter().enumerate() {
+		for (driver, (name, pal)) in DRIVERS.into_iter().enumerate() {
+			let sprite = Sprite {
+				x: 0,
+				y: 0,
+				tile: (row * 32 + driver * 2) as u16 | pal << 9,
+				big: true,
+			};
+			let (width, height, pixels) = draw(&[sprite], &ladder)?;
+			let path = dir.join(format!("ladder/{name}-{face}.png"));
+			write_png(&path, width, height, &palette, &pixels)?;
+		}
+	}
+	for d in 0..8 {
+		for (suffix, pal) in LADDER_PALETTES {
+			let sprite = |y, tile| Sprite {
+				x: 0,
+				y,
+				tile: (tile + d) | pal << 9,
+				big: false,
+			};
+			let digit = [sprite(0, LADDER_DIGIT), sprite(8, LADDER_DIGIT + 16)];
+			let (width, height, pixels) = draw(&digit, &ladder)?;
+			let path = dir.join(format!("ladder/{}{suffix}.png", d + 1));
+			write_png(&path, width, height, &palette, &pixels)?;
+		}
+	}
 	Ok(())
 }
 
@@ -571,6 +613,8 @@ mod tests {
 		assert_eq!(size("hud/rank/race/8.png"), (16, 20));
 		assert_eq!(size("hud/rank/finish/1.png"), (64, 64));
 		assert_eq!(size("hud/counters.png"), (40, 16));
+		assert_eq!(size("hud/ladder/yoshi-sad.png"), (16, 16));
+		assert_eq!(size("hud/ladder/8.png"), (8, 16));
 		fs::remove_dir_all(&folder).unwrap();
 	}
 }
