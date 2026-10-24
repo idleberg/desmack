@@ -251,8 +251,25 @@ The course byte gives this order:
   | Toad | `0x62000` |
   | Luigi | `0x4A000`–`0x4C7FF` |
 
-  The palette index table is at `0x848E` and the angle table at `0x9090`; neither has been
-  checked. Yoshi's bank differs between Europe and USA in 65 of its 768 tiles.
+  Yoshi's bank differs between Europe and USA in 65 of its 768 tiles.
+
+  The driver tables are in bank 0 at `0x9090` (Japan `0x9069`, Europe `0x9077`):
+  - 181 frame codes, each a byte pair: the frame × 2 and a layout byte, whose low nibble is the
+    rows uploaded and high nibble the bytes per row. Rows are `0x200` apart in a bank and go to
+    a 4×4 tile VRAM slot per driver.
+  - Then, at `+0x16A`, 76 frame addresses within a driver's bank. 0–35 are three sets of 12
+    angles at 32×32, 36–51 are 24×24, 52–63 16×16, 64–70 8×16 and 8×8, 71–75 specials. Codes
+    `0x16A` and `0x16C` draw from RAM instead.
+  - The bank bytes are 16 bytes before, in the game's driver order: Mario, Luigi, Bowser, Peach,
+    DK Jr., Koopa Troopa, Toad, Yoshi. Their sprite palettes, from the Theme palette, are 9,
+    10, 8, 11, 11, 10, 9, 8.
+  - Luigi's 32×32 frames and specials take their upper two rows from bank `$84`: at `+0x202` a
+    word per code, the offset into the address table at `+0x36C`, with `0x200` for half-width
+    rows and `0x400` for upper rows only. Everything else of his is Mario's. The `0x200` flag
+    also marks the mirrored 32×32 frames, including two the layout byte calls `0x84`.
+  - Layouts as the game draws them: `0x84` four 16×16 sprites; `0x44` a half, mirrored at
+    +16; `0x63` 16×16 sprites at t, t + 1, t + 16, t + 17; `0x43` a half mirrored at +7;
+    `0x42` one 16×16; `0x41` two tiles stacked; `0x21` one 8×8; `0x82` two 16×16.
 - **Other graphics**:
 
   | Asset | Offset |
@@ -290,6 +307,13 @@ The course byte gives this order:
   mushroom, fireball, egg. Each is four 16×16 frames of 4 consecutive tiles, then four 8×8
   frames; the game copies one into OBJ tile `0x160` per size. Palettes, from any Theme: banana,
   shell and fireball 6, red shell, mushroom and egg 5.
+- **Lakitu**: the `0x10000` stream's tiles 16–143 load at OBJ tile `0x40`, 12–15 (the start
+  lights) at `0xFB`. `0x5E264` (all Regions) is a table of 14 offsets from itself to
+  metasprite records: a count, then x and y (i8), tile and OAM attribute per sprite, then the
+  OAM high bits, 2 per sprite. Palettes 4 and 5. The lap digits are drawn separately.
+- **Other streams the race loads**: `0x91C` effects (dust, sparks, splashes, smoke), `0x300A8`
+  HUD rank portraits and digits, `0x60016` shadows and small icons, `0x10F9B` and `0x11C0E`
+  not yet identified.
 - About 28 code offsets differ between Regions; Epic Edit's `Offsets.cs` lists them, one table per
   Region. The data banks are mostly identical.
 
@@ -297,8 +321,8 @@ The course byte gives this order:
 
 The decisions are all made; what's left is research:
 
-- Driver frame order, angle mapping and palette selection, using Mesen.
-- Where the Cast lives: Lakitu's props and the ending extras.
+- Driver frame names: which angle and set each frame is.
+- The ending extras of the Cast.
 - Where the Effects live: dust, sparks, splashes, smoke, shadows.
 - HUD pieces, the Screens list (title, select screens, podium, ending) and how each screen is built
   from tiles.

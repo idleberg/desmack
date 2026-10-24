@@ -230,8 +230,10 @@ fn extract(
 	let (mut done, mut failed) = (Vec::new(), Vec::new());
 	for &category in categories {
 		let result = match category {
+			Category::Drivers => sprites::drivers(&rom, folder),
 			Category::Items => sprites::items(&rom, folder),
 			Category::Hazards => sprites::hazards(&rom, folder),
+			Category::Cast => sprites::cast(&rom, folder),
 			Category::Tilesets => textures::tilesets(&rom, folder),
 			Category::Skies => textures::skies(&rom, folder),
 			Category::Maps => maps::extract(&rom, folder),
