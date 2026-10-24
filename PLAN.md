@@ -74,6 +74,8 @@ desmack [FLAGS] <ROM>...
 - **Effects**: `sprites/effects/<effect>/NNN.png`, or one folder per Theme when the Theme
   palettes give an effect different colours.
 - **Lakitu**: frames 14–16 are the LAP sign for laps 2–4.
+- **Cheep Cheep**: `sprites/cast/cheep-cheep/` holds the podium's Cheep Cheep with each of its two
+  tails (96×96).
 - **HUD**: `graphics/hud/box/<state>.png` is the player box (32×24) holding `player-1`,
   `player-2`, each item icon or `empty`; `timer.png` the timer as it starts, with its digits in
   `timer/`; `counters.png` the lives and coin counters, with their digits in `counters/`;
@@ -82,7 +84,8 @@ desmack [FLAGS] <ROM>...
   `ladder/<rank>.png` the finish ladder's digits (8×16), with `-red` and `-orange` flash colours.
 - **Font**: `graphics/font/font.png`, 16×16 glyphs, 4 colours.
 - **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
-  at scroll 0; `<screen>/bg<n>.png` holds each layer at full width.
+  at scroll 0; `<screen>/bg<n>.png` holds each layer at full width. The podium's BG1 is its Mode 7
+  map with the rank 1 banner, and `podium/banner-<rank>.png` holds the banner for ranks 1–3.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
@@ -291,7 +294,7 @@ The course byte gives this order:
   | Lakitu, coin, shadow | `0x10000` |
   | Font | `0x70000` |
   | Title | `0x71996` |
-  | Podium | `0x737DA` |
+  | Podium | `0x737DA` (Japan `0x73A63`) |
 
 - **Sprite frames**: a frame record starts with a sprite routine in bank 0 (USA `0xBC0F`, Japan
   and Europe `0xBC34` for the first). By offset from it: `0x00`/`0x08` draw 2 16×16 sprites,
@@ -369,11 +372,21 @@ The course byte gives this order:
   |---|---|---|
   | Title | `0x71996` (Japan `0x71C48`) | VRAM `0x0000`–`0x37FF` (tiles, BG1 map at `0x2000`, BG2 64×32 at `0x2800`), CGRAM at `0x4000`; Mode 1 |
   | Menus | `0x70B29` (Japan `0x70D31`) | Driver select (Mode 0): BG1–3 maps at `0x0`, `0x800`, `0x1800`, CGRAM `0x2800`, 2bpp tiles `0x2A00`; BG4 is entry `0x3014` repeated. Cup select (Mode 1): BG1 map `0x2F00` plus `0xF440` (Japan `0x1040`), CGRAM `0x3700`, 96 2bpp tiles at `0x3900` over the font |
-  | Podium | `0x737DA`, compressed twice | 4bpp tiles, maps around `0x3800`, CGRAM at `0x4800`; not decoded yet |
+  | Podium | `0x737DA` (Japan `0x73A63`), compressed twice | OBJ tiles from `0x0000` (VRAM `0x8000`), BG2 map `0x3800`, BG2 4bpp tiles `0x4000`, CGRAM `0x4800`; Mode 7 above line 136, Mode 1 BG2 below |
 
   Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
-  ending line-up, `0x16` course select (Mode 7 and sprites).
+  ending line-up, `0x16` course select (Mode 7 and sprites), `0x18` the podium. `$0152` is the
+  round of the cup, from 0; setting it to 4 during a race makes that race end the cup.
+- **Podium Mode 7**: `$81:9638` turns the stream's 4bpp tiles into Mode 7 tiles: 152 from `0x2400`
+  with colours from `0xC0` become tiles 0–151, 64 from `0x0C00` with colours from `0x20` become
+  tiles 160–223. The game fills the map with the empty tile `0x6F`, then writes pieces into it:
+  rows of tile numbers in bank `$85`, each ending in `0xFF`. The Cheep Cheep's pointers are at
+  `0x59F19` (Japan `0x59EDC`, Europe `0x59F23`): two 6-row tail patches, which go 4 rows down and
+  8 tiles into the body, then its 12-row body. The banner's pointers are at `0x59FD3` (Japan
+  `0x59F96`, Europe `0x59FDD`): the rank digits 1–3, then the text, 2 rows each, at map row 12,
+  column 12 and row 14, column 7 (Japan row 15, columns 11 and 13). Colours 40–47 cycle while
+  the banner shows.
 - **Other streams the race loads**: `0x60016` shadows and
   small icons, `0x11C0E` not yet identified. Per-Theme hazard
   streams go to `$7F:4000` from the table at `$81:EBD3`. The streams in the table at `$81:F47E`
@@ -389,10 +402,10 @@ The course byte gives this order:
 The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
-- The ending extras of the Cast.
+- The ending extras of the Cast, and the podium's sprites: drivers, trophies, confetti, clouds.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
 - The finish: the LAP TIME panel.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
-- The podium and ending screens.
+- The ending screens.
 - Any Japan or Europe offsets still missing from the table above.

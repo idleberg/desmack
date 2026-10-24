@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, ensure};
 
+use crate::decompress::decompress;
 use crate::maps::{bytes, stream, word};
 use crate::rom::{Region, Rom};
 use crate::sprites::{DRIVERS, LAKITU_THEME, Sprite, draw, race_tiles};
@@ -127,6 +128,46 @@ const FACES: [&str; 3] = ["happy", "sad", "neutral"];
 const LADDER_DIGIT: u16 = 0x60;
 const LADDER_PALETTES: [(&str, u16); 3] = [("", 1), ("-red", 5), ("-orange", 6)];
 
+/// The podium, compressed twice: OBJ tiles from `0x0000`, BG2's tile map at `0x3800` and its 4bpp
+/// tiles at `0x4000`, then all of CGRAM. Above line 136 the screen is Mode 7; below it, BG2.
+fn podium(region: Region) -> usize {
+	match region {
+		Region::Usa | Region::Europe => 0x737DA,
+		Region::Japan => 0x73A63,
+	}
+}
+const PODIUM_SIZE: usize = 0x4A00;
+const PODIUM_BG2_MAP: usize = 0x3800;
+const PODIUM_BG2_TILES: usize = 0x4000;
+const PODIUM_CGRAM: usize = 0x4800;
+const PODIUM_SPLIT: usize = 136;
+/// The game turns 4bpp tiles into Mode 7 ones: (from, count, first Mode 7 tile, colour base).
+const PODIUM_MODE7: [(usize, usize, usize, usize); 2] =
+	[(0x2400, 152, 0, 0xC0), (0x0C00, 64, 160, 0x20)];
+/// The Mode 7 pieces are rows of tile numbers in bank `$85`, each ending in `0xFF`. First,
+/// pointers to the Cheep Cheep's two tail patches, which it flaps between, and to its body.
+fn cheep_cheep(region: Region) -> usize {
+	match region {
+		Region::Usa => 0x59F19,
+		Region::Japan => 0x59EDC,
+		Region::Europe => 0x59F23,
+	}
+}
+/// The body's 12 rows; the tail patch's 6 rows go 4 rows down and 8 tiles in.
+const CHEEP_CHEEP_ROWS: usize = 12;
+const TAIL: (usize, usize, usize) = (4, 8, 6);
+/// The empty tile the game fills the Mode 7 map with.
+const MODE7_FILL: u8 = 0x6F;
+/// Pointers to the banner's rank digits 1–3, then to its text; each piece is 2 rows, which the
+/// game puts at these rows and columns of the Mode 7 map.
+fn banner(region: Region) -> (usize, [(usize, usize); 2]) {
+	match region {
+		Region::Usa => (0x59FD3, [(12, 12), (14, 7)]),
+		Region::Japan => (0x59F96, [(15, 11), (15, 13)]),
+		Region::Europe => (0x59FDD, [(12, 12), (14, 7)]),
+	}
+}
+
 pub fn font(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let glyphs = stream(&rom.data, FONT)?;
 	ensure!(glyphs.len() == 256 * 16, "the font is not 256 glyphs");
@@ -203,7 +244,117 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		"cup-select",
 		&colours(&menus[CUP_CGRAM..CUP_TILES]),
 		&[layer(&tiles, &map, 1, 4, 0)?],
-	)
+	)?;
+
+	// BG1 is the Mode 7 map at scroll 0, where the rank 1 banner sits; BG2's rows above the split
+	// are never shown, and point past its tiles.
+	let (podium, tiles, palette) = podium_mode7(rom)?;
+	let (at, places) = banner(rom.region);
+	let mut pieces = vec![(0, 0, vec![vec![MODE7_FILL; 32]; HEIGHT / 8])];
+	pieces.extend(banner_pieces(&rom.data, at, 0, places)?);
+	let (_, _, mut bg1) = mode7(&tiles, &pieces);
+	bg1[PODIUM_SPLIT * 256..].fill(0);
+	let mut map = vec![0; PODIUM_SPLIT / 8 * 64];
+	map.extend(&podium[PODIUM_BG2_MAP + map.len()..PODIUM_BG2_TILES]);
+	let mut bg2 = layer(&podium[PODIUM_BG2_TILES..PODIUM_CGRAM], &map, 1, 4, 0)?;
+	bg2[..PODIUM_SPLIT * 256].fill(0);
+	write_screen(&dir, "podium", &palette, &[bg1, bg2])?;
+	for rank in 0..3 {
+		let (width, height, pixels) = mode7(&tiles, &banner_pieces(&rom.data, at, rank, places)?);
+		let path = dir.join(format!("podium/banner-{}.png", rank + 1));
+		write_png(&path, width, height, &palette, &pixels)?;
+	}
+	Ok(())
+}
+
+/// The podium stream, its Mode 7 tiles as 256 tiles of 64 bytes, and its colours.
+pub fn podium_mode7(rom: &Rom) -> anyhow::Result<(Vec<u8>, Vec<u8>, Vec<u8>)> {
+	let podium = decompress(&stream(&rom.data, podium(rom.region))?)?;
+	ensure!(
+		podium.len() == PODIUM_SIZE,
+		"the podium is not {PODIUM_SIZE:#X} bytes"
+	);
+	let mut tiles = vec![0; 256 * 64];
+	for (from, count, first, base) in PODIUM_MODE7 {
+		for t in 0..count {
+			let pixels = tile(&podium[from..], t as u16, 4, base)?;
+			tiles[(first + t) * 64..][..64].copy_from_slice(&pixels);
+		}
+	}
+	let palette = colours(&podium[PODIUM_CGRAM..]);
+	Ok((podium, tiles, palette))
+}
+
+/// The Cheep Cheep's body with each tail patch, as pieces for [`mode7`].
+pub fn cheep_cheep_frames(rom: &Rom) -> anyhow::Result<Vec<Vec<Piece>>> {
+	let at = cheep_cheep(rom.region);
+	let pointer = |k: usize| word(&rom.data, at + k * 2).map(|p| at & !0xFFFF | p);
+	let body = mode7_rows(&rom.data, pointer(2)?, CHEEP_CHEEP_ROWS)?;
+	(0..2)
+		.map(|k| {
+			let tail = mode7_rows(&rom.data, pointer(k)?, TAIL.2)?;
+			Ok(vec![(0, 0, body.clone()), (TAIL.0, TAIL.1, tail)])
+		})
+		.collect()
+}
+
+/// The banner for a rank (0–2): its digit and its text, at their places in the Mode 7 map.
+fn banner_pieces(
+	data: &[u8],
+	at: usize,
+	rank: usize,
+	places: [(usize, usize); 2],
+) -> anyhow::Result<Vec<Piece>> {
+	let pointer = |k: usize| word(data, at + k * 2).map(|p| at & !0xFFFF | p);
+	let [(row, column), (text_row, text_column)] = places;
+	Ok(vec![
+		(row, column, mode7_rows(data, pointer(rank)?, 2)?),
+		(text_row, text_column, mode7_rows(data, pointer(3)?, 2)?),
+	])
+}
+
+/// A row and column of the Mode 7 map, and the rows of tile numbers that go there.
+pub type Piece = (usize, usize, Vec<Vec<u8>>);
+
+fn mode7_rows(data: &[u8], mut at: usize, count: usize) -> anyhow::Result<Vec<Vec<u8>>> {
+	(0..count)
+		.map(|_| {
+			let rest = data
+				.get(at..)
+				.context("a Mode 7 row is past the ROM's end")?;
+			let len = rest
+				.iter()
+				.position(|&b| b == 0xFF)
+				.context("a Mode 7 row has no end")?;
+			at += len + 1;
+			Ok(rest[..len].to_vec())
+		})
+		.collect()
+}
+
+/// Draws pieces of the Mode 7 map, later ones over earlier ones, cropped to their bounds.
+pub fn mode7(tiles: &[u8], pieces: &[Piece]) -> (u32, u32, Vec<u8>) {
+	let top = pieces.iter().map(|p| p.0).min().unwrap_or(0);
+	let left = pieces.iter().map(|p| p.1).min().unwrap_or(0);
+	let bottom = pieces.iter().map(|p| p.0 + p.2.len()).max().unwrap_or(0);
+	let right = pieces
+		.iter()
+		.flat_map(|p| p.2.iter().map(|r| p.1 + r.len()))
+		.max()
+		.unwrap_or(0);
+	let width = (right - left) * 8;
+	let mut pixels = vec![0; width * (bottom - top) * 8];
+	for (row, column, rows) in pieces {
+		for (r, line) in rows.iter().enumerate() {
+			for (c, &t) in line.iter().enumerate() {
+				let (y, x) = ((row + r - top) * 8, (column + c - left) * 8);
+				for (i, &p) in tiles[usize::from(t) * 64..][..64].iter().enumerate() {
+					pixels[(y + i / 8) * width + x + i % 8] = p;
+				}
+			}
+		}
+	}
+	(width as u32, ((bottom - top) * 8) as u32, pixels)
 }
 
 pub fn hud(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
@@ -574,6 +725,22 @@ mod tests {
 	}
 
 	#[test]
+	fn mode7_rows_overlay_and_crop() {
+		let rows = mode7_rows(&[1, 2, 0xFF, 1, 0xFF], 0, 2).unwrap();
+		assert_eq!(rows, [vec![1, 2], vec![1]]);
+		// Tile 1 is colour 5 and tile 2 colour 6; tile 0 is empty.
+		let mut tiles = vec![0; 3 * 64];
+		tiles[64..128].fill(5);
+		tiles[128..].fill(6);
+		// The map from row 1, column 1; the second piece puts tile 1 over the first's tile 2.
+		let (width, height, pixels) = mode7(&tiles, &[(1, 1, rows), (1, 2, vec![vec![1]])]);
+		assert_eq!((width, height), (16, 16));
+		assert_eq!(pixels[8], 5);
+		assert_eq!(pixels[8 * 16], 5);
+		assert_eq!(pixels[8 * 16 + 8], 0);
+	}
+
+	#[test]
 	fn run_length_and_copy_lists() {
 		// Two literal words, then one repeated three times.
 		let list = [0x04, 1, 0, 2, 0, 0x07, 3, 0, 0x00];
@@ -608,6 +775,7 @@ mod tests {
 		assert_eq!(size("screens/title/bg2.png"), (512, 224));
 		assert_eq!(size("screens/driver-select/bg4.png"), (256, 224));
 		assert_eq!(size("screens/cup-select.png"), (256, 224));
+		assert_eq!(size("screens/podium/bg2.png"), (256, 224));
 		assert_eq!(size("hud/box/star.png"), (32, 24));
 		assert_eq!(size("hud/timer.png"), (64, 16));
 		assert_eq!(size("hud/rank/race/8.png"), (16, 20));

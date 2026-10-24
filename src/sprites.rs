@@ -3,6 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
+use crate::graphics::{cheep_cheep_frames, mode7, podium_mode7};
 use crate::maps::{THEMES, bytes, stream, word};
 use crate::rom::{Region, Rom};
 use crate::textures::{palette, theme_stream, write_png};
@@ -268,7 +269,23 @@ pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		&frames,
 		&race_tiles(rom)?,
 		&palette(rom, LAKITU_THEME)?,
-	)
+	)?;
+
+	// The podium's Cheep Cheep is no sprite, but a piece of the Mode 7 map.
+	let dir = folder.join("sprites/cast/cheep-cheep");
+	fs::create_dir_all(&dir)?;
+	let (_, tiles, colours) = podium_mode7(rom)?;
+	for (i, pieces) in cheep_cheep_frames(rom)?.iter().enumerate() {
+		let (width, height, pixels) = mode7(&tiles, pieces);
+		write_png(
+			&dir.join(format!("{i:03}.png")),
+			width,
+			height,
+			&colours,
+			&pixels,
+		)?;
+	}
+	Ok(())
 }
 
 /// Effects take their colours from the Theme palette. An effect whose colours are the same in
@@ -658,6 +675,7 @@ mod tests {
 		};
 		assert_eq!(count("drivers/luigi"), FRAMES);
 		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES + 3);
+		assert_eq!(count("cast/cheep-cheep"), 2);
 		assert_eq!(count("effects/smoke"), 48);
 		assert_eq!(count("effects/spray"), THEMES.len());
 		assert_eq!(count("effects/spray/koopa-beach"), 48);
