@@ -35,7 +35,7 @@ pub fn palette(rom: &Rom, theme: usize) -> anyhow::Result<Vec<u8>> {
 	Ok(colours(&palette))
 }
 
-fn colours(bgr555: &[u8]) -> Vec<u8> {
+pub fn colours(bgr555: &[u8]) -> Vec<u8> {
 	bgr555
 		.chunks(2)
 		.flat_map(|b| {

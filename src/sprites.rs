@@ -3,7 +3,7 @@ use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
 
-use crate::maps::{bytes, stream, word};
+use crate::maps::{THEMES, bytes, stream, word};
 use crate::rom::{Region, Rom};
 use crate::textures::{palette, theme_stream, write_png};
 
@@ -148,6 +148,31 @@ const LAKITU_FRAMES: usize = 14;
 /// Lakitu's palette and his lights' are the same in every Theme.
 const LAKITU_THEME: usize = MARIO_CIRCUIT;
 
+/// The race's effect tiles: water and grass at OBJ tile 0, dust and smoke at `0x100`.
+const EFFECT_TILES: usize = 0x903;
+fn dust_tiles(region: Region) -> usize {
+	match region {
+		Region::Usa => 0x49C19,
+		Region::Japan | Region::Europe => 0x49C1C,
+	}
+}
+/// Six metasprite tables in a row, each a list of offsets from itself to its records.
+const EFFECT_TABLES: usize = 0x5EE00;
+/// Each effect's table and the value the game XORs into its tile words, as bank 0's effect list
+/// pairs them: `0x100` picks the dust tiles, `0x400` swaps sprite palette 15 for 13. Frames come
+/// in fours, each four one looping animation.
+const EFFECTS: [(&str, usize, u16); 9] = [
+	("dust", 5, 0x100),
+	("smoke", 5, 0x500),
+	("dust-alt", 0, 0x100),
+	("smoke-alt", 0, 0x500),
+	("spray", 1, 0),
+	("splash", 2, 0),
+	("grass", 3, 0),
+	("smoke-puff", 4, 0x100),
+	("dust-puff", 4, 0x500),
+];
+
 /// One OAM entry: a position, a tile word (tile, palette, flips) and whether it is 16×16.
 #[derive(Clone, Copy)]
 struct Sprite {
@@ -228,6 +253,79 @@ pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		&tiles,
 		&palette(rom, LAKITU_THEME)?,
 	)
+}
+
+/// Effects take their colours from the Theme palette. An effect whose colours are the same in
+/// every Theme is written once; otherwise each Theme gets its own folder.
+pub fn effects(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+	let mut tiles = vec![0; 0x200 * 32];
+	let water = stream(&rom.data, EFFECT_TILES)?;
+	let dust = stream(&rom.data, dust_tiles(rom.region))?;
+	ensure!(
+		water.len() <= 0x100 * 32 && dust.len() <= 0x100 * 32,
+		"effect tiles run long"
+	);
+	tiles[..water.len()].copy_from_slice(&water);
+	tiles[0x100 * 32..0x100 * 32 + dust.len()].copy_from_slice(&dust);
+	let tables = stream(&rom.data, EFFECT_TABLES)?;
+	let mut starts = vec![0];
+	for _ in 1..6 {
+		let table = starts[starts.len() - 1];
+		let mut last = 0;
+		for k in 0..word(&tables, table)? / 2 {
+			last = last.max(word(&tables, table + k * 2)?);
+		}
+		let count = usize::from(bytes(&tables, table + last, 1)?[0]);
+		starts.push(table + last + 1 + count * 4 + count / 4 + 1);
+	}
+	let palettes = (0..THEMES.len())
+		.map(|theme| palette(rom, theme))
+		.collect::<anyhow::Result<Vec<_>>>()?;
+	for (name, table, xor) in EFFECTS {
+		let start = starts[table];
+		let mut frames = Vec::new();
+		for k in 0..word(&tables, start)? / 2 {
+			let mut sprites = metasprite(&tables, start + word(&tables, start + k * 2)?)?;
+			for sprite in &mut sprites {
+				sprite.tile ^= xor;
+			}
+			frames.push(draw(&sprites, &tiles)?);
+		}
+		let colours = |palette: &[u8]| -> Vec<u8> {
+			frames
+				.iter()
+				.flat_map(|(_, _, pixels)| pixels)
+				.filter(|&&p| p != 0)
+				.flat_map(|&p| palette[usize::from(p) * 3..usize::from(p) * 3 + 3].to_vec())
+				.collect()
+		};
+		let same = palettes
+			.iter()
+			.all(|p| colours(p) == colours(&palettes[MARIO_CIRCUIT]));
+		let dir = folder.join("sprites/effects").join(name);
+		let themes: Vec<_> = if same {
+			vec![(dir, &palettes[MARIO_CIRCUIT])]
+		} else {
+			THEMES
+				.iter()
+				.zip(&palettes)
+				.map(|(theme, palette)| (dir.join(theme), palette))
+				.collect()
+		};
+		for (dir, palette) in themes {
+			fs::create_dir_all(&dir)?;
+			for (i, (width, height, pixels)) in frames.iter().enumerate() {
+				write_png(
+					&dir.join(format!("{i:03}.png")),
+					*width,
+					*height,
+					palette,
+					pixels,
+				)?;
+			}
+		}
+	}
+	Ok(())
 }
 
 /// A metasprite record: a sprite count, then x and y as i8, the tile and the OAM attribute byte for
@@ -536,6 +634,7 @@ mod tests {
 		items(&rom, &folder).unwrap();
 		hazards(&rom, &folder).unwrap();
 		cast(&rom, &folder).unwrap();
+		effects(&rom, &folder).unwrap();
 		let count = |dir: &str| {
 			fs::read_dir(folder.join("sprites").join(dir))
 				.unwrap()
@@ -543,6 +642,9 @@ mod tests {
 		};
 		assert_eq!(count("drivers/luigi"), FRAMES);
 		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES);
+		assert_eq!(count("effects/smoke"), 48);
+		assert_eq!(count("effects/spray"), THEMES.len());
+		assert_eq!(count("effects/spray/koopa-beach"), 48);
 		assert_eq!(count("items/green-shell"), 16);
 		assert_eq!(count("hazards/pipe"), 11);
 		assert_eq!(count("hazards/piranha-plant"), 20);

@@ -10,6 +10,7 @@ use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
 mod decompress;
+mod graphics;
 mod maps;
 mod rom;
 mod sprites;
@@ -234,6 +235,9 @@ fn extract(
 			Category::Items => sprites::items(&rom, folder),
 			Category::Hazards => sprites::hazards(&rom, folder),
 			Category::Cast => sprites::cast(&rom, folder),
+			Category::Effects => sprites::effects(&rom, folder),
+			Category::Font => graphics::font(&rom, folder),
+			Category::Screens => graphics::screens(&rom, folder),
 			Category::Tilesets => textures::tilesets(&rom, folder),
 			Category::Skies => textures::skies(&rom, folder),
 			Category::Maps => maps::extract(&rom, folder),

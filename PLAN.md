@@ -71,6 +71,11 @@ desmack [FLAGS] <ROM>...
 - **Skies**: each layer is drawn as it appears in game, not dumped as raw tiles: near is
   1024×32, far 512×32. Colour 0 stays transparent; the game shows
   CGRAM colour 0 behind both.
+- **Effects**: `sprites/effects/<effect>/NNN.png`, or one folder per Theme when the Theme
+  palettes give an effect different colours.
+- **Font**: `graphics/font/font.png`, 16×16 glyphs, 4 colours.
+- **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
+  at scroll 0; `<screen>/bg<n>.png` holds each layer at full width.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
@@ -311,9 +316,34 @@ The course byte gives this order:
   lights) at `0xFB`. `0x5E264` (all Regions) is a table of 14 offsets from itself to
   metasprite records: a count, then x and y (i8), tile and OAM attribute per sprite, then the
   OAM high bits, 2 per sprite. Palettes 4 and 5. The lap digits are drawn separately.
-- **Other streams the race loads**: `0x91C` effects (dust, sparks, splashes, smoke), `0x300A8`
-  HUD rank portraits and digits, `0x60016` shadows and small icons, `0x10F9B` and `0x11C0E`
-  not yet identified.
+- **Effects**: the race loads `0x903` at OBJ tile 0 (water, grass) and `0x49C19` (Japan and
+  Europe `0x49C1C`) at `0x100` (dust, smoke). `0x5EE00`, unpacked to `$7E:2000`, is six
+  metasprite tables in a row, each a list of offsets from itself to records in Lakitu's format
+  (a record's OAM high bits take `count / 4 + 1` bytes). Bank 0's effect list (USA `$80:D1CE`)
+  gives each surface a table, a value XORed into the tile words (`0x100` picks the dust tiles,
+  `0x400` swaps sprite palette 15 for 13) and animation scripts of (duration, frame) byte pairs,
+  `0x80` jumping to an address; frames come in fours. Colours come from the Theme palette, so
+  Vanilla Lake's dust is snow, Bowser Castle's spray lava and Choco Island's mud.
+- **Font**: `0x70000`, 256 2bpp glyphs (Japan's has kana), loaded as OBJ tiles 0–255; menus
+  use sprite palette 4 of the title's CGRAM. Cup select also loads it as BG tiles from `0x40`.
+- **Screens**: the game unpacks each into VRAM and CGRAM; tile priorities are left out.
+
+  | Screen | Stream | Contents |
+  |---|---|---|
+  | Title | `0x71996` (Japan `0x71C48`) | VRAM `0x0000`–`0x37FF` (tiles, BG1 map at `0x2000`, BG2 64×32 at `0x2800`), CGRAM at `0x4000`; Mode 1 |
+  | Menus | `0x70B29` (Japan `0x70D31`) | Driver select (Mode 0): BG1–3 maps at `0x0`, `0x800`, `0x1800`, CGRAM `0x2800`, 2bpp tiles `0x2A00`; BG4 is entry `0x3014` repeated. Cup select (Mode 1): BG1 map `0x2F00` plus `0xF440` (Japan `0x1040`), CGRAM `0x3700`, 96 2bpp tiles at `0x3900` over the font |
+  | Podium | `0x737DA`, compressed twice | 4bpp tiles, maps around `0x3800`, CGRAM at `0x4800`; not decoded yet |
+
+  Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
+  with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
+  ending line-up, `0x16` course select (Mode 7 and sprites).
+- **Other streams the race loads**: `0x300A8` HUD rank portraits and digits, `0x60016` shadows and
+  small icons, `0x112F8` HUD digits and signs, `0x11C0E` not yet identified. Per-Theme hazard
+  streams go to `$7F:4000` from the table at `$81:EBD3`. The streams in the table at `$81:F47E`
+  (`0x49801`, `0x61E28`, `0x76301`, …) are music, not graphics.
+- **Decompressor**: `$84:E09E` (A = bank, Y = address, X = destination in `$7F`) and
+  `$84:DF38` (destination in `$7E`); scanning for their callers with immediate arguments
+  finds every fixed stream, per Region.
 - About 28 code offsets differ between Regions; Epic Edit's `Offsets.cs` lists them, one table per
   Region. The data banks are mostly identical.
 
@@ -323,7 +353,8 @@ The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
 - The ending extras of the Cast.
-- Where the Effects live: dust, sparks, splashes, smoke, shadows.
-- HUD pieces, the Screens list (title, select screens, podium, ending) and how each screen is built
-  from tiles.
+- Effect names: which surface and mode use the second dust and smoke set (`table 0`).
+- HUD pieces: how each is drawn (the coin counter is hand-coded at `$81:BAC9`, digits from the
+  table at `$81:BABF`).
+- The podium and ending screens, and the Lakitu lap digits.
 - Any Japan or Europe offsets still missing from the table above.
