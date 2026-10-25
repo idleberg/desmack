@@ -132,8 +132,13 @@ const LUIGI: usize = 1;
 /// The driver tables, from [`Bank0::of`]'s `drivers`: a (frame, layout) byte pair per frame code;
 /// then each frame's address in a driver's bank; then, for Luigi, a word per frame code that picks
 /// his own upper half, from the bank table after it. The banks come 16 bytes before.
-const CODES: usize = 181;
-const FRAMES: usize = 76;
+///
+/// The race codes are 11 scales, nearest first, of 16 angles from behind (0) to the front (15);
+/// the game mirrors them for the other side. Far scales share a frame between angles. The
+/// specials follow, which the game sets over the race codes.
+const SCALES: usize = 11;
+const ANGLES: usize = 16;
+const SPECIALS: [&str; 5] = ["cheer-back", "look-back", "look-side", "cheer", "dazed"];
 const FRAME_TABLE: usize = 0x16A;
 const LUIGI_TABLE: usize = 0x202;
 const LUIGI_TOPS: usize = 0x36C;
@@ -568,24 +573,30 @@ pub fn drivers(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let palette = palette(rom, MARIO_CIRCUIT)?;
 	for (driver, (name, pal)) in DRIVERS.into_iter().enumerate() {
 		let dir = folder.join("sprites/drivers").join(name);
-		fs::create_dir_all(&dir)?;
-		for frame in 0..FRAMES {
-			let code = (0..CODES)
-				.find(|c| usize::from(rom.data[codes + c * 2]) == frame * 2)
-				.with_context(|| format!("no frame code draws driver frame {frame}"))?;
+		let mut frames = Vec::new();
+		for scale in 0..SCALES {
+			let mut seen = Vec::new();
+			for angle in 0..ANGLES {
+				let code = scale * ANGLES + angle;
+				if !seen.contains(&rom.data[codes + code * 2]) {
+					seen.push(rom.data[codes + code * 2]);
+					frames.push((code, format!("scale-{scale:02}/angle-{angle:02}.png")));
+				}
+			}
+		}
+		for (k, special) in SPECIALS.iter().enumerate() {
+			frames.push((SCALES * ANGLES + k, format!("{special}.png")));
+		}
+		for (code, file) in frames {
+			let path = dir.join(file);
+			fs::create_dir_all(path.parent().unwrap())?;
 			let (tiles, layout) = slot(&rom.data, codes, driver, code)?;
 			let mut sprites = sprites_of(layout)?;
 			for sprite in &mut sprites {
 				sprite.tile |= pal << 9;
 			}
 			let (width, height, pixels) = draw(&sprites, &tiles)?;
-			write_png(
-				&dir.join(format!("{frame:03}.png")),
-				width,
-				height,
-				&palette,
-				&pixels,
-			)?;
+			write_png(&path, width, height, &palette, &pixels)?;
 		}
 	}
 	Ok(())
@@ -855,7 +866,9 @@ mod tests {
 				.unwrap()
 				.count()
 		};
-		assert_eq!(count("drivers/luigi"), FRAMES);
+		assert_eq!(count("drivers/luigi"), SCALES + SPECIALS.len());
+		assert_eq!(count("drivers/luigi/scale-00"), 12);
+		assert_eq!(count("drivers/luigi/scale-10"), 2);
 		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES + 3);
 		assert_eq!(count("cast/cheep-cheep"), 2);
 		assert_eq!(count("cast/podium"), DRIVERS.len() + 4);

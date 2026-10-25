@@ -51,7 +51,7 @@ desmack [FLAGS] <ROM>...
 
 ```
 <rom stem>/
-  sprites/drivers/<driver>/000.png …
+  sprites/drivers/<driver>/scale-<nn>/angle-<nn>.png  <special>.png
   sprites/items/ sprites/hazards/ sprites/cast/ sprites/effects/
   graphics/hud/ graphics/font/ graphics/screens/ graphics/icons/
   textures/tilesets/<theme>.png
@@ -63,8 +63,11 @@ desmack [FLAGS] <ROM>...
 - **Names**: courses, themes and drivers are lowercase and hyphenated, e.g. `mario-circuit-1`,
   `dk-jr`.
 - **PNGs**: indexed, with colour 0 transparent.
-- **Sprites**: one PNG per frame, numbered in ROM order. Frames get real names (e.g. `angle-00`)
-  once the Mesen research identifies them.
+- **Sprites**: one PNG per frame, numbered in ROM order unless the frames have names.
+- **Drivers**: `scale-<nn>/angle-<nn>.png` is a race frame: scale `00` is the nearest of 11, and
+  angle `00` (from behind) to `15` (the front) is the first angle code that shows the frame, so a
+  name means the same view at every scale. The specials are `cheer-back`, `look-back` and
+  `look-side` (the head only), `cheer` and `dazed`.
 - **Tilesets**: one 128×128 PNG per Theme, 16×16 tiles. Tile index = row × 16 + column, and
   Ground is cell 0. The palette has 256 entries, one block of 16 for each of the 16 palettes, so
   every tile is drawn with its own palette.
@@ -281,6 +284,15 @@ The course byte gives this order:
   - Then, at `+0x16A`, 76 frame addresses within a driver's bank. 0–35 are three sets of 12
     angles at 32×32, 36–51 are 24×24, 52–63 16×16, 64–70 8×16 and 8×8, 71–75 specials. Codes
     `0x16A` and `0x16C` draw from RAM instead.
+  - Codes 0–175 are 11 scales of 16 angles: `$80:C485` takes the racer's angle to the camera
+    (`$2A,x` − `$94`) and adds the scale's base from `$C3A0` to make the code, which goes to
+    `$30,x` (code × 2, bit 15 mirrors). Scales 0–2 have 12 frames, 3–4 eight, 5–7 four, 8 three
+    and 9–10 two. Codes 176–180 are the specials, frames 71–75.
+  - When `$6C,x` bit 15 is set, `$80:C4C1` overrides the code by its low bits: 0 alternates
+    frame 74 and the front every 16 frames; 1, below speed `0x300`, shows 75 for 128 frames, then
+    looks around with 72 and 73; 2 shows 74 when the racer faces the camera; 3 the RAM frame.
+    The 2-player code at `$81:884E`, `$81:D442` and `$81:DFA1` sets them for the other player's
+    racer. No code was found that sets frame 71's code `0x160`.
   - The bank bytes are 16 bytes before, in the game's driver order: Mario, Luigi, Bowser, Peach,
     DK Jr., Koopa Troopa, Toad, Yoshi. Their sprite palettes, from the Theme palette, are 9,
     10, 8, 11, 11, 10, 9, 8.
@@ -460,6 +472,5 @@ The course byte gives this order:
 
 The decisions are all made; what's left is research:
 
-- Driver frame names: which angle and set each frame is.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
