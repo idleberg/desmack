@@ -268,7 +268,7 @@ The course byte gives this order:
   | Toad | `0x62000` |
   | Luigi | `0x4A000`–`0x4C7FF` |
 
-  Yoshi's bank differs between Europe and USA in 65 of its 768 tiles.
+  Yoshi's bank differs between Europe and USA in 65 of its 768 tiles; Japan's matches Europe's.
 
   The driver tables are in bank 0 at `0x9090` (Japan `0x9069`, Europe `0x9077`):
   - 181 frame codes, each a byte pair: the frame × 2 and a layout byte, whose low nibble is the
@@ -419,6 +419,13 @@ The course byte gives this order:
   finds every fixed stream, per Region.
 - About 28 code offsets differ between Regions; Epic Edit's `Offsets.cs` lists them, one table per
   Region. The data banks are mostly identical.
+- **Region differences**, from extracting all three ROMs and comparing the output:
+  - Japan and Europe share Yoshi's bank and seven Bowser Castle tiles (104, 106, 113, 119, 130,
+    131, 135), which USA redrew.
+  - Japan's podium palette differs in colours 225–229, so its podium sprites, screens and Cheep
+    Cheep differ in colour only.
+  - The rest of Japan's differences are its font, screens and podium tables. Every single-offset
+    entry in the course data table holds the same bytes in all three ROMs.
 
 ## Open research (milestone 7)
 
@@ -429,4 +436,3 @@ The decisions are all made; what's left is research:
 - The finish: the LAP TIME panel.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
-- Any Japan or Europe offsets still missing from the table above.
