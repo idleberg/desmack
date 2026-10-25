@@ -21,6 +21,20 @@ The CLI extracts any of the following:
 > [!NOTE]
 > `desmack` ships no game data. Bring your own ROM (Japan, USA or Europe).
 
+## Install
+
+### Cargo
+
+```
+cargo install desmack
+```
+
+### Homebrew
+
+```
+brew install idleberg/asahi/desmack
+```
+
 ## Usage
 
 ```sh
