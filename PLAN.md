@@ -34,7 +34,7 @@ desmack [FLAGS] <ROM>...
 ```
 
 - **No category flag, stdin is a TTY**: one clark `group_multiselect` dialog for all ROMs. Its
-  groups are sprites, graphics, textures and maps, and every category starts selected.
+  groups are sprites, graphics, textures and maps, and no category starts selected.
 - **No category flag, no TTY**: everything is extracted.
 - **Output**: `<rom dir>/<rom stem>/`, next to each ROM.
 - **Same file passed twice**: desmack resolves the real path and uses the file once, without saying so.

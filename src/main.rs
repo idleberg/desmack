@@ -189,8 +189,7 @@ fn choose(cli: &Cli, tty: bool) -> anyhow::Result<Option<Vec<Category>>> {
 		return Ok(Some(flagged));
 	}
 
-	let mut dialog =
-		clark::group_multiselect("What should desmack extract?").initial_values(Category::ALL);
+	let mut dialog = clark::group_multiselect("What should desmack extract?");
 	for group in ["sprites", "graphics", "textures", "maps"] {
 		dialog = dialog.group(
 			group,
