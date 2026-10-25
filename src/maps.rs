@@ -110,7 +110,7 @@ pub fn word(data: &[u8], at: usize) -> anyhow::Result<usize> {
 }
 
 /// A word that addresses the same bank as `at`.
-fn near(data: &[u8], at: usize) -> anyhow::Result<usize> {
+pub fn near(data: &[u8], at: usize) -> anyhow::Result<usize> {
 	Ok(at & 0xFF_0000 | word(data, at)?)
 }
 

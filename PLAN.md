@@ -76,6 +76,8 @@ desmack [FLAGS] <ROM>...
 - **Lakitu**: frames 14–16 are the LAP sign for laps 2–4.
 - **Cheep Cheep**: `sprites/cast/cheep-cheep/` holds the podium's Cheep Cheep with each of its two
   tails (96×96).
+- **Podium**: `sprites/cast/podium/<driver>/` holds a driver's poses, then the champagne they hold
+  and spray; `cups/`, `trophies/` (ranks 1–3), `confetti/` and `pop/` its single sprites.
 - **HUD**: `graphics/hud/box/<state>.png` is the player box (32×24) holding `player-1`,
   `player-2`, each item icon or `empty`; `timer.png` the timer as it starts, with its digits in
   `timer/`; `counters.png` the lives and coin counters, with their digits in `counters/`;
@@ -387,6 +389,27 @@ The course byte gives this order:
   `0x59F96`, Europe `0x59FDD`): the rank digits 1–3, then the text, 2 rows each, at map row 12,
   column 12 and row 14, column 7 (Japan row 15, columns 11 and 13). Colours 40–47 cycle while
   the banner shows.
+- **Podium sprites**: OBJ tiles 0–319 are the stream's first `0x2800` bytes. `$85:99AE` adds two
+  heads per driver, the upper halves of race frames: from the address at `0x59EEF` (Japan
+  `0x59EB2`, Europe `0x59EF9`, 3 bytes per driver), half rows of `0x40` bytes `0x200` apart, from
+  `0x40` and `0x5900` (Luigi `0x2100`), to OBJ tiles `0x140` (Mario), `0x160`, `0x144`, `0x148`,
+  `0x14C`, `0x164`, `0x168` and `0x16C` (Yoshi). The frames start at `0x5A330` (Japan `0x5A2DE`,
+  Europe `0x5A33A`): pointer tables in a row, each followed by its frames, OAM entries (x, y,
+  tile, attribute) ending in `0xFFFF`, which `$85:B999` copies to OAM. Each driver has its poses,
+  then the bottles they hold and their spray; in Japan Bowser sprays too and Peach holds a bottle.
+  The game makes OAM slots 80–83, 90, 91 and 94–127 16×16 and the rest 8×8, so a frame's sizes
+  follow the slot its code copies it to, which Mesen logs (an exec callback on `$85:B999`, with
+  each kart's `$1012` rotated so every driver reaches the podium) give per table. Tile word
+  tables give the single sprites: the cups' icons at `0x5A040` (by cup; the Special Cup cycles),
+  the trophies at `0x5A32A` (by the player's rank, from `$85:994E`), confetti at `0x5AB43` (six
+  pieces of three frames) and the champagne's pop at `0x5AB89` (Japan `0x59FCE`, `0x5A2D8`,
+  `0x5AB1F`, `0x5AB65`; Europe each `0xA` later). The OAM shadow is `$0200`, mirrored in bank
+  `$85`, so Mesen's write callbacks need `$85:0200` too.
+- **Ending**: after the podium, `$85:B8E7` goes to the credits (mode `0x0C`) when the cup (`$0150`)
+  is the Special Cup and the player came 1st; setting `$0150` to 3 on the podium gets there. The
+  credits are races on the courses with the staff written in font sprites; the line-up (`0x1C`)
+  draws the podium poses (`$85:BAD0`) under THANK YOU and THE END, font sprites again. Neither
+  has graphics of its own.
 - **Other streams the race loads**: `0x60016` shadows and
   small icons, `0x11C0E` not yet identified. Per-Theme hazard
   streams go to `$7F:4000` from the table at `$81:EBD3`. The streams in the table at `$81:F47E`
@@ -402,10 +425,8 @@ The course byte gives this order:
 The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
-- The ending extras of the Cast, and the podium's sprites: drivers, trophies, confetti, clouds.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
 - The finish: the LAP TIME panel.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
-- The ending screens.
 - Any Japan or Europe offsets still missing from the table above.

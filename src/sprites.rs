@@ -4,7 +4,7 @@ use std::path::Path;
 use anyhow::{Context, bail, ensure};
 
 use crate::graphics::{cheep_cheep_frames, mode7, podium_mode7};
-use crate::maps::{THEMES, bytes, stream, word};
+use crate::maps::{THEMES, bytes, long, near, stream, word};
 use crate::rom::{Region, Rom};
 use crate::textures::{palette, theme_stream, write_png};
 
@@ -153,6 +153,95 @@ pub const LAKITU_THEME: usize = MARIO_CIRCUIT;
 const LAP_SIGN: usize = 11;
 const LAP_DIGIT: u16 = 0xA1;
 
+/// The podium's OBJ tiles are the first 320 of its stream. The game adds two heads per driver, the
+/// upper halves of race frames: half rows of 2 tiles, `0x200` apart, from `0x40` and `0x5900`
+/// (Luigi `0x2100`) past the address in this table, in [`DRIVERS`] order.
+fn podium_heads(region: Region) -> usize {
+	match region {
+		Region::Usa => 0x59EEF,
+		Region::Japan => 0x59EB2,
+		Region::Europe => 0x59EF9,
+	}
+}
+const PODIUM_OBJ: usize = 0x2800;
+const HEAD_TILES: [usize; 8] = [0x140, 0x160, 0x144, 0x148, 0x14C, 0x164, 0x168, 0x16C];
+
+/// The podium's frames: pointer tables in a row, each followed by its frames, which are OAM
+/// entries (x, y, tile, attribute) ending in `0xFFFF`. Each frame is copied to OAM from a slot,
+/// which sets its sprites' sizes.
+fn podium_tables(region: Region) -> (usize, PodiumTables) {
+	match region {
+		Region::Usa => (0x5A330, PODIUM_TABLES),
+		Region::Japan => (0x5A2DE, PODIUM_TABLES_JAPAN),
+		Region::Europe => (0x5A33A, PODIUM_TABLES),
+	}
+}
+/// Each table's driver and the slot of each of its frames, the last one repeating: the driver's
+/// poses, then the champagne they hold and its spray. In Japan Bowser sprays too and Peach holds a
+/// bottle.
+type PodiumTables = &'static [(usize, &'static [usize])];
+const PODIUM_TABLES: PodiumTables = &[
+	(0, &[94]),
+	(0, &[90]),
+	(0, &[82, 82, 83, 84]),
+	(2, &[94]),
+	(2, &[90]),
+	(3, &[94]),
+	(4, &[94, 94, 94, 94, 84]),
+	(4, &[90]),
+	(1, &[94]),
+	(1, &[90]),
+	(1, &[90, 82, 84]),
+	(5, &[94]),
+	(5, &[90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 84]),
+	(6, &[94]),
+	(6, &[90]),
+	(7, &[94]),
+];
+const PODIUM_TABLES_JAPAN: PodiumTables = &[
+	(0, &[94]),
+	(0, &[90]),
+	(0, &[82, 82, 83, 84]),
+	(2, &[94]),
+	(2, &[90]),
+	(2, &[82]),
+	(3, &[94, 94, 92]),
+	(3, &[90]),
+	(4, &[94, 94, 94, 94, 84]),
+	(4, &[90]),
+	(1, &[94]),
+	(1, &[90]),
+	(1, &[90, 82, 84]),
+	(5, &[94]),
+	(5, &[90, 90, 90, 90, 90, 90, 90, 90, 90, 90, 84]),
+	(6, &[94]),
+	(6, &[90]),
+	(7, &[94]),
+];
+/// The podium makes OAM slots 80–83, 90, 91 and 94 on 16×16, the rest 8×8.
+fn big(slot: usize) -> bool {
+	matches!(slot, 80..=83 | 90 | 91 | 94..)
+}
+/// The podium's single sprites, tile word tables in bank `$85`: (name, table, count, 16×16). The
+/// cups' icons float in the sky, the Special Cup's cycling through all three; Cheep Cheep brings
+/// the trophy for the player's rank; confetti flutters through three frames per piece; the pop
+/// bursts as the champagne opens, its third frame a blank tile.
+fn podium_singles(region: Region) -> [(&'static str, usize, usize, bool); 4] {
+	let [cups, trophies, confetti, pop] = match region {
+		Region::Usa => [0x5A040, 0x5A32A, 0x5AB43, 0x5AB89],
+		Region::Japan => [0x59FCE, 0x5A2D8, 0x5AB1F, 0x5AB65],
+		Region::Europe => [0x5A04A, 0x5A334, 0x5AB4D, 0x5AB93],
+	};
+	[
+		("cups", cups, 3, true),
+		("trophies", trophies, 3, true),
+		("confetti", confetti, 18, false),
+		("pop", pop, 2, true),
+	]
+}
+/// Sprites from this line down are hidden.
+const HIDDEN: i32 = 0xE0;
+
 /// The race's effect tiles: water and grass at OBJ tile 0, dust and smoke at `0x100`.
 const EFFECT_TILES: usize = 0x903;
 fn dust_tiles(region: Region) -> usize {
@@ -271,10 +360,39 @@ pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		&palette(rom, LAKITU_THEME)?,
 	)?;
 
+	let (podium, tiles, colours) = podium_mode7(rom)?;
+	let objects = podium_tiles(rom, &podium)?;
+	for (driver, frames) in podium_frames(rom)?.iter().enumerate() {
+		write_frames(
+			&folder.join("sprites/cast/podium").join(DRIVERS[driver].0),
+			frames,
+			&objects,
+			&colours,
+		)?;
+	}
+	for (name, at, count, big) in podium_singles(rom.region) {
+		let frames = (0..count)
+			.map(|k| {
+				let tile = word(&rom.data, at + k * 2)? as u16;
+				Ok(vec![Sprite {
+					x: 0,
+					y: 0,
+					tile,
+					big,
+				}])
+			})
+			.collect::<anyhow::Result<Vec<_>>>()?;
+		write_frames(
+			&folder.join("sprites/cast/podium").join(name),
+			&frames,
+			&objects,
+			&colours,
+		)?;
+	}
+
 	// The podium's Cheep Cheep is no sprite, but a piece of the Mode 7 map.
 	let dir = folder.join("sprites/cast/cheep-cheep");
 	fs::create_dir_all(&dir)?;
-	let (_, tiles, colours) = podium_mode7(rom)?;
 	for (i, pieces) in cheep_cheep_frames(rom)?.iter().enumerate() {
 		let (width, height, pixels) = mode7(&tiles, pieces);
 		write_png(
@@ -286,6 +404,65 @@ pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		)?;
 	}
 	Ok(())
+}
+
+/// OBJ tiles 0–511 as the podium loads them.
+fn podium_tiles(rom: &Rom, podium: &[u8]) -> anyhow::Result<Vec<u8>> {
+	let mut tiles = vec![0; 0x200 * 32];
+	tiles[..PODIUM_OBJ].copy_from_slice(&podium[..PODIUM_OBJ]);
+	let heads = podium_heads(rom.region);
+	for (driver, tile) in HEAD_TILES.into_iter().enumerate() {
+		let at = long(&rom.data, heads + driver * 3)?;
+		let second = if driver == LUIGI { 0x2100 } else { 0x5900 };
+		for row in 0..2 {
+			for (k, head) in [0x40, second].into_iter().enumerate() {
+				let to = (tile + row * 16 + k * 2) * 32;
+				tiles[to..to + 0x40].copy_from_slice(bytes(
+					&rom.data,
+					at + head + row * 0x200,
+					0x40,
+				)?);
+			}
+		}
+	}
+	Ok(tiles)
+}
+
+/// Each driver's podium frames, in table order, without repeats or hidden sprites.
+fn podium_frames(rom: &Rom) -> anyhow::Result<Vec<Vec<Vec<Sprite>>>> {
+	let (mut at, tables) = podium_tables(rom.region);
+	let mut frames = vec![Vec::new(); DRIVERS.len()];
+	for &(driver, slots) in tables {
+		let mut pointers: Vec<usize> = Vec::new();
+		while pointers.iter().all(|&p| at + pointers.len() * 2 < p) {
+			ensure!(pointers.len() < 16, "podium table at {at:#X} runs long");
+			pointers.push(near(&rom.data, at + pointers.len() * 2)?);
+		}
+		let mut seen = Vec::new();
+		for (k, &pointer) in pointers.iter().enumerate() {
+			let slot = slots[k.min(slots.len() - 1)];
+			let mut sprites = Vec::new();
+			let mut entry = pointer;
+			while word(&rom.data, entry)? != 0xFFFF {
+				let [x, y, tile, attr] = bytes(&rom.data, entry, 4)?.try_into()?;
+				if i32::from(y) < HIDDEN {
+					sprites.push(Sprite {
+						x: i32::from(x),
+						y: i32::from(y),
+						tile: u16::from(tile) | u16::from(attr) << 8,
+						big: big(slot + (entry - pointer) / 4),
+					});
+				}
+				entry += 4;
+			}
+			at = at.max(entry + 2);
+			if !seen.contains(&pointer) {
+				seen.push(pointer);
+				frames[driver].push(sprites);
+			}
+		}
+	}
+	Ok(frames)
 }
 
 /// Effects take their colours from the Theme palette. An effect whose colours are the same in
@@ -676,6 +853,9 @@ mod tests {
 		assert_eq!(count("drivers/luigi"), FRAMES);
 		assert_eq!(count("cast/lakitu"), LAKITU_FRAMES + 3);
 		assert_eq!(count("cast/cheep-cheep"), 2);
+		assert_eq!(count("cast/podium"), DRIVERS.len() + 4);
+		assert_eq!(count("cast/podium/mario"), 2 + 3 + 7);
+		assert_eq!(count("cast/podium/confetti"), 18);
 		assert_eq!(count("effects/smoke"), 48);
 		assert_eq!(count("effects/spray"), THEMES.len());
 		assert_eq!(count("effects/spray/koopa-beach"), 48);
