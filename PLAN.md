@@ -42,8 +42,10 @@ desmack [FLAGS] <ROM>
   --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
 ```
 
-- **No category flag, stdin is a TTY**: one clark `group_multiselect` dialog. Its
-  groups are sprites, graphics, textures and maps, and no category starts selected.
+- **No category flag, stdin is a TTY**: clark `multiselect` dialogs, for their `a`/`i` shortcuts.
+  The first picks among sprites, graphics, textures and maps, then each picked group with more than
+  one category gets a dialog of its own. Nothing starts selected, and any dialog can be left
+  empty. Leaving them all empty extracts nothing and says so.
 - **No category flag, no TTY**: everything is extracted.
 - **Output**: `<rom dir>/<rom stem>/`, next to the ROM.
 - **Output folder desmack can't write to**: reported, non-zero exit.

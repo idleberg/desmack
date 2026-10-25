@@ -150,14 +150,38 @@ fn choose(cli: &Cli, tty: bool) -> anyhow::Result<Option<Vec<Category>>> {
 		return Ok(Some(flagged));
 	}
 
-	let mut dialog = clark::group_multiselect("What should desmack extract?");
+	// One multiselect per level rather than a group_multiselect, for its `a`/`i` shortcuts. A group
+	// with one category needs no second dialog.
+	let mut dialog = clark::multiselect("What should desmack extract?").required(false);
 	for group in ["sprites", "graphics", "textures", "maps"] {
-		dialog = dialog.group(
-			group,
-			Category::ALL.into_iter().filter(|c| c.group() == group),
-		);
+		dialog = dialog.option(group);
 	}
-	Ok(dialog.interact_opt()?)
+	let Some(groups) = dialog.interact_opt()? else {
+		return Ok(None);
+	};
+
+	let mut chosen = Vec::new();
+	for group in groups {
+		let categories = Category::ALL.into_iter().filter(|c| c.group() == group);
+		if categories.clone().count() == 1 {
+			chosen.extend(categories);
+			continue;
+		}
+		let mut dialog = clark::multiselect(format!("Which {group}?")).required(false);
+		for category in categories {
+			dialog = dialog.option(category);
+		}
+		let Some(picked) = dialog.interact_opt()? else {
+			return Ok(None);
+		};
+		chosen.extend(picked);
+	}
+	Ok(Some(
+		Category::ALL
+			.into_iter()
+			.filter(|c| chosen.contains(c))
+			.collect(),
+	))
 }
 
 /// Whether to write into `folder`, by the overwrite rules.
@@ -225,6 +249,10 @@ fn main() -> ExitCode {
 	let tty = io::stdin().is_terminal();
 	let folder = path.with_extension("");
 	let categories = match choose(&cli, tty) {
+		Ok(Some(categories)) if categories.is_empty() => {
+			clark::outro("skipped everything, nothing extracted");
+			return ExitCode::SUCCESS;
+		}
 		Ok(Some(categories)) => categories,
 		Ok(None) => {
 			clark::cancel("nothing extracted");
