@@ -55,7 +55,7 @@ const PILLARS: usize = 0x4DD15;
 
 /// Where each Region keeps its map tables.
 pub struct Offsets {
-	pub track_list: usize,
+	pub course_list: usize,
 	overlay_patterns: usize,
 	overlay_sizes: usize,
 	ai_bank: usize,
@@ -67,7 +67,7 @@ impl Offsets {
 	pub fn of(region: Region) -> Offsets {
 		match region {
 			Region::Japan => Offsets {
-				track_list: 0x1E74D,
+				course_list: 0x1E74D,
 				overlay_patterns: 0x4F0B5,
 				overlay_sizes: 0x4F1FC,
 				ai_bank: 0x1FBC4,
@@ -75,7 +75,7 @@ impl Offsets {
 				starts: 0x18A8D,
 			},
 			Region::Usa => Offsets {
-				track_list: 0x1E749,
+				course_list: 0x1E749,
 				overlay_patterns: 0x4F23D,
 				overlay_sizes: 0x4F384,
 				ai_bank: 0x1FBD3,
@@ -83,7 +83,7 @@ impl Offsets {
 				starts: 0x18A79,
 			},
 			Region::Europe => Offsets {
-				track_list: 0x1E738,
+				course_list: 0x1E738,
 				overlay_patterns: 0x4F159,
 				overlay_sizes: 0x4F2A0,
 				ai_bank: 0x1FB9D,
@@ -137,13 +137,13 @@ fn tile(b: &[u8]) -> (usize, usize) {
 pub fn extract(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let data = &rom.data;
 	let o = Offsets::of(rom.region);
-	let list = long(data, o.track_list)?;
+	let list = long(data, o.course_list)?;
 
 	let genres = folder.join("maps/genres");
 	fs::create_dir_all(&genres)?;
 	let stream = stream(data, GENRES)?;
 	for (theme, name) in THEMES.into_iter().enumerate() {
-		// The game reads 192 bytes from the theme's offset, which sits 16 bytes before the track
+		// The game reads 192 bytes from the theme's offset, which sits 16 bytes before the course
 		// list, then the stream's first 64. Koopa Beach and Rainbow Road run past the stream's
 		// end into whatever RAM holds; none of their courses use those tiles.
 		let start = word(data, list - 16 + theme * 2)?;
@@ -280,7 +280,7 @@ fn ai(data: &[u8], o: &Offsets, course: usize) -> anyhow::Result<String> {
 	}
 }
 
-/// In pixels. GP courses place 8 karts in two columns, 24 pixels apart; battle courses list the
+/// In pixels. GP courses place 8 drivers in two columns, 24 pixels apart; battle courses list the
 /// 2 players.
 fn starts(data: &[u8], o: &Offsets, course: usize) -> anyhow::Result<String> {
 	let record = near(data, near(data, o.starts + course * 2)?)? + 2;
@@ -288,9 +288,9 @@ fn starts(data: &[u8], o: &Offsets, course: usize) -> anyhow::Result<String> {
 	if course < 20 {
 		let (x, y) = (word(data, record)?, word(data, record + 2)?);
 		let step = word(data, record + 4)? as i16 as isize;
-		for kart in 0..8 {
-			let x = x as isize + step * (kart % 2);
-			writeln!(text, "{x} {}", y + 24 * kart as usize)?;
+		for driver in 0..8 {
+			let x = x as isize + step * (driver % 2);
+			writeln!(text, "{x} {}", y + 24 * driver as usize)?;
 		}
 	} else {
 		for player in 0..2 {

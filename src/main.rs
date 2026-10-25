@@ -1,10 +1,11 @@
 use std::fmt;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
+use std::panic;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::Context;
+use anyhow::{Context, anyhow};
 use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
@@ -237,7 +238,7 @@ fn main() -> ExitCode {
 	let rom = match fs::read(path).context("can't read it").and_then(Rom::parse) {
 		Ok(rom) => rom,
 		Err(error) => {
-			eprintln!("{}: {error:#}", path.display());
+			clark::cancel(format!("{}: {error:#}", path.display()));
 			return ExitCode::FAILURE;
 		}
 	};
@@ -283,11 +284,21 @@ fn main() -> ExitCode {
 	// Off a terminal, one line per message rather than frames.
 	let ci = !io::stdout().is_terminal();
 	let mut ok = true;
+	// A modified ROM can still trip an unchecked slice: fail that category, not the run.
+	let hook = panic::take_hook();
+	panic::set_hook(Box::new(|_| {}));
 	for category in categories {
 		let spinner = clark::spinner()
 			.ci(ci)
 			.start(format!("extracting {category}"));
-		match extract(category, &rom, &folder) {
+		let result =
+			panic::catch_unwind(|| extract(category, &rom, &folder)).unwrap_or_else(|panic| {
+				let message = panic
+					.downcast_ref::<String>()
+					.map_or("it panicked", String::as_str);
+				Err(anyhow!("{message}"))
+			});
+		match result {
 			Ok(()) => spinner.stop(format!("extracted {category}")),
 			Err(error) => {
 				spinner.error(format!("{category} failed: {error:#}"));
@@ -295,6 +306,7 @@ fn main() -> ExitCode {
 			}
 		}
 	}
+	panic::set_hook(hook);
 	clark::outro(format!("saved to {}", folder.display()));
 	if ok {
 		ExitCode::SUCCESS

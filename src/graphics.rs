@@ -12,7 +12,7 @@ use crate::textures::{colours, palette, write_png};
 /// 256 glyphs of 2bpp planar tiles, which the game loads as OBJ tiles 0–255. Japan's has kana
 /// where the others have more Latin letters.
 const FONT: usize = 0x70000;
-/// The menus draw text in sprite palette 4 of the title screen's CGRAM.
+/// The screens draw text in sprite palette 4 of the title screen's CGRAM.
 const FONT_PALETTE: usize = 128 + 4 * 16;
 
 /// The title screen: 4bpp tiles and both tile maps as they go into VRAM, then all of CGRAM.
@@ -31,8 +31,8 @@ const RESULTS_CGRAM: usize = 0x4200;
 const TITLE_BG1: usize = 0x2000;
 const TITLE_BG2: usize = 0x2800;
 
-/// The menus' tiles, tile maps and palettes, which the game unpacks to `$7F:C000`.
-fn menus(region: Region) -> usize {
+/// The select screens' tiles, tile maps and palettes, which the game unpacks to `$7F:C000`.
+fn select_screens(region: Region) -> usize {
 	match region {
 		Region::Usa | Region::Europe => 0x70B29,
 		Region::Japan => 0x70D31,
@@ -228,19 +228,22 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		&[Vec::new(), layer(&vram, &vram[TITLE_BG2..], 2, 4, 0)?],
 	)?;
 
-	let menus = stream(&rom.data, menus(rom.region))?;
-	ensure!(menus.len() == 0x4000, "the menu graphics are not 16 KB");
+	let screens = stream(&rom.data, select_screens(rom.region))?;
+	ensure!(
+		screens.len() == 0x4000,
+		"the select screen graphics are not 16 KB"
+	);
 	// Mode 0: 2bpp tiles, and each BG has its own 32 colours.
-	let tiles = &menus[DRIVER_TILES..CUP_MAP];
+	let tiles = &screens[DRIVER_TILES..CUP_MAP];
 	let fill = [DRIVER_FILL.to_le_bytes(); 32 * 32].concat();
 	write_screen(
 		&dir,
 		"driver-select",
-		&colours(&menus[DRIVER_CGRAM..DRIVER_TILES]),
+		&colours(&screens[DRIVER_CGRAM..DRIVER_TILES]),
 		&[
-			layer(tiles, &menus[DRIVER_BG1..], 1, 2, 0)?,
-			layer(tiles, &menus[DRIVER_BG2..], 1, 2, 32)?,
-			layer(tiles, &menus[DRIVER_BG3..], 1, 2, 64)?,
+			layer(tiles, &screens[DRIVER_BG1..], 1, 2, 0)?,
+			layer(tiles, &screens[DRIVER_BG2..], 1, 2, 32)?,
+			layer(tiles, &screens[DRIVER_BG3..], 1, 2, 64)?,
 			layer(tiles, &fill, 1, 2, 96)?,
 		],
 	)?;
@@ -251,19 +254,19 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	for (tile, planes) in font.chunks(16).enumerate() {
 		tiles[(CUP_FONT + tile) * 32..][..16].copy_from_slice(planes);
 	}
-	for (tile, planes) in menus[CUP_TILES..CUP_TILES + CUP_TILE_COUNT * 16]
+	for (tile, planes) in screens[CUP_TILES..CUP_TILES + CUP_TILE_COUNT * 16]
 		.chunks(16)
 		.enumerate()
 	{
 		tiles[tile * 32..][..16].copy_from_slice(planes);
 	}
-	let map: Vec<u8> = menus[CUP_MAP..CUP_CGRAM]
+	let map: Vec<u8> = screens[CUP_MAP..CUP_CGRAM]
 		.chunks(2)
 		.flat_map(|e| {
 			(u16::from_le_bytes([e[0], e[1]]).wrapping_add(cup_add(rom.region))).to_le_bytes()
 		})
 		.collect();
-	let palette = colours(&menus[CUP_CGRAM..CUP_TILES]);
+	let palette = colours(&screens[CUP_CGRAM..CUP_TILES]);
 	write_screen(
 		&dir,
 		"cup-select",
@@ -714,7 +717,7 @@ fn write_screen(dir: &Path, name: &str, palette: &[u8], layers: &[Vec<u8>]) -> a
 	)
 }
 
-/// A background layer of `screens` 32×32 tile maps side by side, cut to the visible height. Each
+/// A BG layer of `screens` 32×32 tile maps side by side, cut to the visible height. Each
 /// entry holds a tile (bits 0–9), a palette (10–12) and flips (14, 15); a pixel is `base` +
 /// palette × colours per palette + colour.
 fn layer(

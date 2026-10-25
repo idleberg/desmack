@@ -10,14 +10,14 @@ use crate::rom::Rom;
 /// Tile indices 192–255, which every Theme shares.
 const COMMON_TILES: usize = 0x40000;
 
-/// The track list's per-Theme pointer groups, after its 24 map pointers.
+/// The course list's per-Theme pointer groups, after its 24 map pointers.
 const TILES: usize = 0;
 const PALETTE: usize = 1;
 const SKY_TILES: usize = 3;
 const SKY_LAYOUT: usize = 4;
 
 pub fn theme_stream(rom: &Rom, group: usize, theme: usize) -> anyhow::Result<Vec<u8>> {
-	let list = long(&rom.data, Offsets::of(rom.region).track_list)?;
+	let list = long(&rom.data, Offsets::of(rom.region).course_list)?;
 	stream(
 		&rom.data,
 		long(&rom.data, list + 72 + group * 24 + theme * 3)?,
@@ -113,7 +113,7 @@ pub fn skies(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 
 /// A sky layer: `screens` tile maps of 32×4 entries side by side, from `row` of the layout. The
 /// tiles are 2bpp planar, and the near and far layers use their own 32 colours from `base`, as
-/// Mode 0 gives each background.
+/// Mode 0 gives each BG.
 fn sky(
 	tiles: &[u8],
 	layout: &[u8],

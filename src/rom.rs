@@ -46,8 +46,8 @@ pub struct Rom {
 	pub data: Vec<u8>,
 	pub region: Region,
 	pub crc: u32,
-	/// The known dump's version, or `None` for a modified ROM.
-	pub version: Option<&'static str>,
+	/// The known dump's revision, or `None` for a modified ROM.
+	pub revision: Option<&'static str>,
 }
 
 impl Rom {
@@ -56,12 +56,12 @@ impl Rom {
 			data.drain(..512);
 		}
 		let crc = crc32fast::hash(&data);
-		if let Some(&(_, region, version)) = DUMPS.iter().find(|dump| dump.0 == crc) {
+		if let Some(&(_, region, revision)) = DUMPS.iter().find(|dump| dump.0 == crc) {
 			return Ok(Rom {
 				data,
 				region,
 				crc,
-				version: Some(version),
+				revision: Some(revision),
 			});
 		}
 		ensure!(
@@ -82,14 +82,14 @@ impl Rom {
 			data,
 			region,
 			crc,
-			version: None,
+			revision: None,
 		})
 	}
 
 	/// Betas keep their assets elsewhere, so they are named but not extracted.
 	pub fn beta(&self) -> bool {
-		self.version
-			.is_some_and(|version| version.starts_with("Beta"))
+		self.revision
+			.is_some_and(|revision| revision.starts_with("Beta"))
 	}
 }
 
@@ -100,7 +100,7 @@ impl fmt::Display for Rom {
 			"{} Super Mario Kart {:08X} ({})",
 			self.region.flag(),
 			self.crc,
-			self.version.unwrap_or("unknown")
+			self.revision.unwrap_or("unknown")
 		)
 	}
 }
@@ -126,7 +126,7 @@ mod tests {
 		let rom = Rom::parse(data).unwrap();
 		assert_eq!(rom.data.len(), 0x40000);
 		assert_eq!(rom.region, Region::Europe);
-		assert_eq!(rom.version, None);
+		assert_eq!(rom.revision, None);
 	}
 
 	#[test]
@@ -144,6 +144,6 @@ mod tests {
 			return;
 		};
 		let rom = Rom::parse(std::fs::read(path).unwrap()).unwrap();
-		assert!(rom.version.is_some_and(|_| !rom.beta()), "{rom}");
+		assert!(rom.revision.is_some_and(|_| !rom.beta()), "{rom}");
 	}
 }

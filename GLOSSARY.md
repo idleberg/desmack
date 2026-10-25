@@ -13,7 +13,7 @@ The market a ROM was released for: Japan, USA or Europe.
 _Avoid_: type, country, version
 
 **Revision**:
-One release of a Region's ROM, e.g. 1.0 or 1.1.
+One release of a Region's ROM, e.g. v1.0 or Beta 2.
 _Avoid_: version, build
 
 **Known ROM**:

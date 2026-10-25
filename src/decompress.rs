@@ -99,7 +99,7 @@ mod tests {
 	}
 
 	#[test]
-	fn smk_rom_track_0_decompresses_twice() {
+	fn smk_rom_course_0_decompresses_twice() {
 		let Ok(path) = std::env::var("SMK_ROM") else {
 			return;
 		};
@@ -113,8 +113,8 @@ mod tests {
 			Region::Usa => 0x1E749,
 			Region::Europe => 0x1E738,
 		});
-		let track = pointer(list);
-		let packed = &rom.data[track..track + 3372];
+		let course = pointer(list);
+		let packed = &rom.data[course..course + 3372];
 		assert!(decompress(&packed[..3371]).is_err());
 		let once = decompress(packed).unwrap();
 		assert_eq!(once.len(), 5871);

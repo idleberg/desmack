@@ -23,7 +23,7 @@ const ITEM_SETS: [(&str, &[usize], u16); 6] = [
 	("egg", &[5], 5),
 ];
 
-/// Track list group 2: a Theme's 57 hazard tiles, which the game loads at OBJ tile `0xC0`.
+/// Course list group 2: a Theme's 57 hazard tiles, which the game loads at OBJ tile `0xC0`.
 const HAZARD_TILES: usize = 2;
 const HAZARD_BASE: usize = 0xC0;
 /// A blank 16×16 OBJ tile that Ghost Valley's pillars pad their frames with.

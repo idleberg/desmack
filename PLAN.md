@@ -12,15 +12,15 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
   removed before reading.
 - desmack compares the CRC32 of the ROM, without the copier header, to the known dumps:
 
-  | Region | Version | CRC32 |
-  |---|---|---|
-  | Japan | v1.0 | `C8002453` |
-  | USA | v1.0 | `CD80DB86` |
-  | Europe | v1.0 | `56410E5E` |
-  | Japan | Beta 1 | `6AAF031A` |
-  | Japan | Beta 2 | `8DC4E42F` |
-  | Japan | Beta 3 | `F575F2A0` |
-  | USA | Beta | `54F5E6D4` |
+  | Region | Version | CRC32      |
+  | ------ | ------- | ---------- |
+  | Japan  | v1.0    | `C8002453` |
+  | USA    | v1.0    | `CD80DB86` |
+  | Europe | v1.0    | `56410E5E` |
+  | Japan  | Beta 1  | `6AAF031A` |
+  | Japan  | Beta 2  | `8DC4E42F` |
+  | Japan  | Beta 3  | `F575F2A0` |
+  | USA    | Beta    | `54F5E6D4` |
 
 - **Betas** are named but not extracted: their assets are not at the retail offsets. Their headers
   can't be trusted either: Beta 1 has none, Beta 2 says USA, and Beta 3 and the USA Beta say
@@ -51,7 +51,8 @@ desmack [FLAGS] <ROM>
 - **Output folder desmack can't write to**: reported, non-zero exit.
 - **Output folder already exists**:
   - with a TTY, one clark confirm per folder;
-  - with `--force`, it is overwritten;
+  - with `--force`, it is written into: the picked categories' files are replaced, and the rest
+    of the folder is left as it is;
   - with no TTY and no `--force`, the ROM is reported and skipped.
 - **Exit code**: non-zero if the ROM failed or was skipped.
 
@@ -97,8 +98,8 @@ desmack [FLAGS] <ROM>
   `ladder/<rank>.png` the finish ladder's digits (8×16), with `-red` and `-orange` flash colours.
 - **Font**: `graphics/font/font.png`, 16×16 glyphs, 4 colours.
 - **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
-  at scroll 0; `<screen>/bg<n>.png` holds each layer at full width. The podium's BG1 is its Mode 7
-  map with the rank 1 banner, and `podium/banner-<rank>.png` holds the banner for ranks 1–3.
+  at scroll 0; `<screen>/bg<n>.png` holds each layer at full width. The podium's BG1 is the visible
+  part of its Mode 7 map, with the rank 1 banner (the rest of the map is the empty tile), and `podium/banner-<rank>.png` holds the banner for ranks 1–3.
   `results` is the background of the results and standings screens, which has only BG2.
 - **Icons**: `graphics/icons/` holds the menus' 16×16 sprites, written with the screens: each cup's
   icon (`mushroom`, `flower`, `star`) and the trophies cup select shows,
@@ -106,12 +107,13 @@ desmack [FLAGS] <ROM>
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
-  entries. The hazard type follows from the Theme. Battle courses have none.
+  entries; empty `00 00` entries are left out. The hazard type follows from the Theme. Battle courses have none.
 - **`ai.txt`**: one line per AI zone: its shape and size in tiles, followed by the zone's AI
   target `x y speed`, with `intersection` appended when the flag is set.
 - **`start.txt`**: one `x y` per Start position, in pixels: 8 on GP courses, 2 on battle courses.
 - **`genres/<theme>.txt`**: 256 lines, `<hex index> <genre name>`, with Epic Edit's genre names.
-  An index the ROM doesn't define is `undefined`.
+  An index the ROM doesn't define is `undefined`, and a genre byte Epic Edit has no name for is
+  `unknown`.
 
 ### Project
 
@@ -127,6 +129,7 @@ desmack [FLAGS] <ROM>
   - `anyhow`
 
   TTY detection uses `std::io::IsTerminal`.
+
 - **Cargo**: edition 2024, binary only, `[profile.release] lto = true, strip = true`.
 - **Tooling**, copied from ardent (`~/Repositories/_nsis/ardent`):
   - mise tasks `build`, `format`, `format:check`, `lint`, `test`
@@ -134,9 +137,10 @@ desmack [FLAGS] <ROM>
   - `.github/workflows/ci.yml` and `release.yml`
 - **Tests**:
   - synthetic unit tests for header detection, the decompressor and the 4bpp/BGR555 decoders;
-  - integration tests that run only when `SMK_ROM` is set.
+  - ROM tests in each module, which return early unless `SMK_ROM` is set.
 
   No ROM data goes into the repo, not even as test fixtures.
+
 - **Out of scope**: switching kart-prototype to use desmack's output, including its missing Mario
   Circuit pipes, comes after v0.1.
 
@@ -174,15 +178,15 @@ Read a byte `v`. `0xFF` ends the stream. Otherwise the command is `v >> 5` and t
 `(v & 0x1F) + 1`. Command 7 means a long header: the command is `(v >> 2) & 7` and the count is
 `((v & 3) << 8 | next) + 1`.
 
-| Command | Action |
-|---|---|
-| 0 | copy n literal bytes |
-| 1 | repeat one byte |
-| 2 | alternate two bytes |
-| 3 | write an incrementing byte |
-| 4 | copy from absolute output offset (u16 LE) |
-| 5 | as 4, each byte XOR `0xFF` |
-| 6 | copy from `out_pos - next byte` |
+| Command | Action                                    |
+| ------- | ----------------------------------------- |
+| 0       | copy n literal bytes                      |
+| 1       | repeat one byte                           |
+| 2       | alternate two bytes                       |
+| 3       | write an incrementing byte                |
+| 4       | copy from absolute output offset (u16 LE) |
+| 5       | as 4, each byte XOR `0xFF`                |
+| 6       | copy from `out_pos - next byte`           |
 
 A copy from outside the output reads stale RAM in the game; desmack writes 0. Only Bowser
 Castle's road tiles do this, for 2 bytes in a tile no course uses.
@@ -195,18 +199,19 @@ Track maps and the podium are compressed twice. Driver sprites are not compresse
 The course byte gives this order:
 
 | Index | Course | Index | Course | Index | Course |
-|---|---|---|---|---|---|
-| 0 | MC3 | 7 | MC1 | 14 | MC4 |
-| 1 | GV2 | 8 | GV3 | 15 | MC2 |
-| 2 | DP2 | 9 | BC3 | 16 | GV1 |
-| 3 | BC2 | 10 | CI2 | 17 | BC1 |
-| 4 | VL2 | 11 | DP3 | 18 | CI1 |
-| 5 | RR | 12 | VL1 | 19 | DP1 |
-| 6 | KB2 | 13 | KB1 | | |
+| ----- | ------ | ----- | ------ | ----- | ------ |
+| 0     | MC3    | 7     | MC1    | 14    | MC4    |
+| 1     | GV2    | 8     | GV3    | 15    | MC2    |
+| 2     | DP2    | 9     | BC3    | 16    | GV1    |
+| 3     | BC2    | 10    | CI2    | 17    | BC1    |
+| 4     | VL2    | 11    | DP3    | 18    | CI1    |
+| 5     | RR     | 12    | VL1    | 19    | DP1    |
+| 6     | KB2    | 13    | KB1    |       |        |
 
 20–23 are Battle Courses 3, 4, 1 and 2.
 
 **Track list**:
+
 - The pointer is at `0x1E749`; Europe `0x1E738`, Japan `0x1E74D`.
 - It leads to the pointer tables for the 24 maps, then 8 entries each for road graphics, palettes,
   object graphics, background graphics and background layouts.
@@ -215,19 +220,19 @@ The course byte gives this order:
 
 **Course data**:
 
-| Data | Offset |
-|---|---|
-| Genres | `0x7FDBA` |
-| Hazard positions | `0x5C800` + course × 64 |
-| Object zones | `0x4DB93` |
-| GV pillar pointers | `0x4DD15` |
-| AI bank byte | `0x1FBD3`; Europe `0x1FB9D`, Japan `0x1FBC4` |
-| AI zone pointers | `0x1FF9B`; Europe `0x1FF6D`, Japan `0x1FF8C` |
-| Start pointers | `0x18A79`; Europe `0x18A92`, Japan `0x18A8D` |
-| Lap line | `0x180D4` + course × 6 |
-| Overlay | `0x5D000` + course × 128 |
+| Data                     | Offset                                       |
+| ------------------------ | -------------------------------------------- |
+| Genres                   | `0x7FDBA`                                    |
+| Hazard positions         | `0x5C800` + course × 64                      |
+| Object zones             | `0x4DB93`                                    |
+| GV pillar pointers       | `0x4DD15`                                    |
+| AI bank byte             | `0x1FBD3`; Europe `0x1FB9D`, Japan `0x1FBC4` |
+| AI zone pointers         | `0x1FF9B`; Europe `0x1FF6D`, Japan `0x1FF8C` |
+| Start pointers           | `0x18A79`; Europe `0x18A92`, Japan `0x18A8D` |
+| Lap line                 | `0x180D4` + course × 6                       |
+| Overlay                  | `0x5D000` + course × 128                     |
 | Overlay pattern pointers | `0x4F23D`; Europe `0x4F159`, Japan `0x4F0B5` |
-| Overlay pattern sizes | `0x4F384`; Europe `0x4F2A0`, Japan `0x4F1FC` |
+| Overlay pattern sizes    | `0x4F384`; Europe `0x4F2A0`, Japan `0x4F1FC` |
 
 - **Genres**: one compressed stream. A Theme's genres are 192 bytes from its offset, a u16 in a
   table 16 bytes before the track list, then the stream's first 64 bytes. Koopa Beach and
@@ -272,16 +277,16 @@ The course byte gives this order:
   animated in game.
 - **Drivers**: 4bpp planar, 32×32 frames, `0x6000` bytes per driver:
 
-  | Driver | Offset |
-  |---|---|
-  | Mario | `0x2000` |
-  | Bowser | `0x12000` |
-  | Peach | `0x22000` |
-  | DK Jr. | `0x32000` |
-  | Yoshi | `0x42000` |
-  | Koopa Troopa | `0x52000` |
-  | Toad | `0x62000` |
-  | Luigi | `0x4A000`–`0x4C7FF` |
+  | Driver       | Offset              |
+  | ------------ | ------------------- |
+  | Mario        | `0x2000`            |
+  | Bowser       | `0x12000`           |
+  | Peach        | `0x22000`           |
+  | DK Jr.       | `0x32000`           |
+  | Yoshi        | `0x42000`           |
+  | Koopa Troopa | `0x52000`           |
+  | Toad         | `0x62000`           |
+  | Luigi        | `0x4A000`–`0x4C7FF` |
 
   Yoshi's bank differs between Europe and USA in 65 of its 768 tiles; Japan's matches Europe's.
 
@@ -311,16 +316,17 @@ The course byte gives this order:
   - Layouts as the game draws them: `0x84` four 16×16 sprites; `0x44` a half, mirrored at
     +16; `0x63` 16×16 sprites at t, t + 1, t + 16, t + 17; `0x43` a half mirrored at +7;
     `0x42` one 16×16; `0x41` two tiles stacked; `0x21` one 8×8; `0x82` two 16×16.
+
 - **Other graphics**:
 
-  | Asset | Offset |
-  |---|---|
-  | Items | `0x40594` |
-  | Chain Chomp, read at the driver select screen | `0x60000` |
-  | Lakitu, coin, shadow | `0x10000` |
-  | Font | `0x70000` |
-  | Title | `0x71996` |
-  | Podium | `0x737DA` (Japan `0x73A63`) |
+  | Asset                                         | Offset                      |
+  | --------------------------------------------- | --------------------------- |
+  | Items                                         | `0x40594`                   |
+  | Chain Chomp, read at the driver select screen | `0x60000`                   |
+  | Lakitu, coin, shadow                          | `0x10000`                   |
+  | Font                                          | `0x70000`                   |
+  | Title                                         | `0x71996`                   |
+  | Podium                                        | `0x737DA` (Japan `0x73A63`) |
 
 - **Sprite frames**: a frame record starts with a sprite routine in bank 0 (USA `0xBC0F`, Japan
   and Europe `0xBC34` for the first). By offset from it: `0x00`/`0x08` draw 2 16×16 sprites,
@@ -332,18 +338,19 @@ The course byte gives this order:
   script: two op words, then 12 frame pointers, one per size, of which the game uses 11. The game
   XORs a value into the tile words, which changes the palette:
 
-  | Hazard | Graphics, palette | Scripts (USA; Europe +`0x25`) | XOR |
-  |---|---|---|---|
-  | Pipe | MC, MC (VL is the same) | `0xE582` | 0 |
-  | Orange pipe (DP1) | MC, DP | `0xE582` | `0x400` |
-  | Pillar | GV | `0xE716` (Japan `0xE71C`) | 0 |
-  | Monty Mole, peeking and jumping | DP | `0xE3BC`, `0xE3D8` | 0 |
-  | Piranha Plant, two frames | CI | `0xE0BC`, `0xE0D8` | 0 |
-  | Cheep Cheep, two frames | KB | `0xE0BC`, `0xE0D8` | 0 |
-  | Thwomp, and its shadow | BC | `0xE2C3`, `0xED2B` (Japan `0xED31`) | `0x600`, 0 |
+  | Hazard                          | Graphics, palette       | Scripts (USA; Europe +`0x25`)       | XOR        |
+  | ------------------------------- | ----------------------- | ----------------------------------- | ---------- |
+  | Pipe                            | MC, MC (VL is the same) | `0xE582`                            | 0          |
+  | Orange pipe (DP1)               | MC, DP                  | `0xE582`                            | `0x400`    |
+  | Pillar                          | GV                      | `0xE716` (Japan `0xE71C`)           | 0          |
+  | Monty Mole, peeking and jumping | DP                      | `0xE3BC`, `0xE3D8`                  | 0          |
+  | Piranha Plant, two frames       | CI                      | `0xE0BC`, `0xE0D8`                  | 0          |
+  | Cheep Cheep, two frames         | KB                      | `0xE0BC`, `0xE0D8`                  | 0          |
+  | Thwomp, and its shadow          | BC                      | `0xE2C3`, `0xED2B` (Japan `0xED31`) | `0x600`, 0 |
 
   Japan's other scripts are at Europe's offsets. Rainbow Road's Thwomps are Bowser Castle's,
   cycling through all 8 palettes. Pillars pad frames with OBJ tile `0x84`, a blank 16×16 block.
+
 - **Items**: `0x40594` holds 6 blocks of 640 bytes: banana, two shell spin frames, poison
   mushroom, fireball, egg. Each is four 16×16 frames of 4 consecutive tiles, then four 8×8
   frames; the game copies one into OBJ tile `0x160` per size. Palettes, from any Theme: banana,
@@ -381,7 +388,7 @@ The course byte gives this order:
     (`$0420`) on the bottom: a 16×16 digit sprite (tile `0x140` + slot) with the face over its
     right half, tile `0x120` + 2 × driver in the driver's sprite palette. Every 8 frames the face
     flips to the happy one (ranks 1–4) or the sad one, which USA `$80:8D87` uploads to `0x144`
-    + 2 × slot. A digit may flash through palettes 1, 1, 5 and 6 (USA `$80:8C91`).
+    - 2 × slot. A digit may flash through palettes 1, 1, 5 and 6 (USA `$80:8C91`).
   - LAP TIME panel: no graphics of its own. After the finish the game writes font glyphs (the
     header is glyphs `0x2D`–`0x35`, the rules `0x9E`) into OBJ tiles from `0x180` and shows
     them as rows of 8×8 sprites in palette 4.
@@ -400,11 +407,11 @@ The course byte gives this order:
   use sprite palette 4 of the title's CGRAM. Cup select also loads it as BG tiles from `0x40`.
 - **Screens**: the game unpacks each into VRAM and CGRAM; tile priorities are left out.
 
-  | Screen | Stream | Contents |
-  |---|---|---|
-  | Title | `0x71996` (Japan `0x71C48`) | VRAM `0x0000`–`0x37FF` (tiles, BG1 map at `0x2000`, BG2 64×32 at `0x2800`), CGRAM at `0x4000`; Mode 1 |
-  | Menus | `0x70B29` (Japan `0x70D31`) | Driver select (Mode 0): BG1–3 maps at `0x0`, `0x800`, `0x1800`, CGRAM `0x2800`, 2bpp tiles `0x2A00`; BG4 is entry `0x3014` repeated. Cup select (Mode 1): BG1 map `0x2F00` plus `0xF440` (Japan `0x1040`), CGRAM `0x3700`, 96 2bpp tiles at `0x3900` over the font |
-  | Podium | `0x737DA` (Japan `0x73A63`), compressed twice | OBJ tiles from `0x0000` (VRAM `0x8000`), BG2 map `0x3800`, BG2 4bpp tiles `0x4000`, CGRAM `0x4800`; Mode 7 above line 136, Mode 1 BG2 below |
+  | Screen | Stream                                        | Contents                                                                                                                                                                                                                                                           |
+  | ------ | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+  | Title  | `0x71996` (Japan `0x71C48`)                   | VRAM `0x0000`–`0x37FF` (tiles, BG1 map at `0x2000`, BG2 64×32 at `0x2800`), CGRAM at `0x4000`; Mode 1                                                                                                                                                              |
+  | Menus  | `0x70B29` (Japan `0x70D31`)                   | Driver select (Mode 0): BG1–3 maps at `0x0`, `0x800`, `0x1800`, CGRAM `0x2800`, 2bpp tiles `0x2A00`; BG4 is entry `0x3014` repeated. Cup select (Mode 1): BG1 map `0x2F00` plus `0xF440` (Japan `0x1040`), CGRAM `0x3700`, 96 2bpp tiles at `0x3900` over the font |
+  | Podium | `0x737DA` (Japan `0x73A63`), compressed twice | OBJ tiles from `0x0000` (VRAM `0x8000`), BG2 map `0x3800`, BG2 4bpp tiles `0x4000`, CGRAM `0x4800`; Mode 7 above line 136, Mode 1 BG2 below                                                                                                                        |
 
   The results and standings screens (mode `0x10`, Mode 1) load the title stream again: BG2 is the
   title's landscape in the stream's second CGRAM at `0x4200`, which holds night colours for BG
@@ -429,6 +436,7 @@ The course byte gives this order:
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
   ending line-up, `0x16` course select (Mode 7 and sprites), `0x18` the podium. `$0152` is the
   round of the cup, from 0; setting it to 4 during a race makes that race end the cup.
+
 - **Podium Mode 7**: `$81:9638` turns the stream's 4bpp tiles into Mode 7 tiles: 152 from `0x2400`
   with colours from `0xC0` become tiles 0–151, 64 from `0x0C00` with colours from `0x20` become
   tiles 160–223. The game fills the map with the empty tile `0x6F`, then writes pieces into it:
