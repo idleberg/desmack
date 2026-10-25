@@ -1,9 +1,24 @@
 # desmack
 
-A command-line tool that extracts the assets of a Super Mario Kart SNES ROM: driver sprites,
-items, hazards, HUD, font, screens, tilesets, skies and course maps.
+> A command-line tool that extracts the assets of a Super Mario Kart SNES ROM
 
-desmack ships no game data. Bring your own ROM (Japan, USA or Europe).
+![Crates.io License](https://img.shields.io/crates/l/desmack?style=for-the-badge)
+[![Crates.io Version](https://img.shields.io/crates/v/desmack?style=for-the-badge)](https://crates.io/crates/desmack)
+[![CI](https://img.shields.io/github/actions/workflow/status/idleberg/desmack/ci.yml?style=for-the-badge)](https://github.com/idleberg/desmack/actions)
+
+The CLI extracts any of the following:
+
+- driver sprites
+- items
+- hazards
+- HUD
+- font
+- screens
+- tilesets
+- skies
+- course maps
+
+`desmack` ships no game data. Bring your own ROM (Japan, USA or Europe).
 
 ## Usage
 
@@ -21,12 +36,6 @@ Shell completions:
 ```sh
 desmack --completions fish > ~/.config/fish/completions/desmack.fish
 ```
-
-## Credits
-
-desmack is written from documented facts about the ROM. Its research sources are
-Epic Edit, the SMK track editor, and Stifu's Super Mario
-Kart ROM documentation. No Epic Edit code is used.
 
 ## Licence
 
