@@ -53,7 +53,7 @@ desmack [FLAGS] <ROM>...
 <rom stem>/
   sprites/drivers/<driver>/000.png …
   sprites/items/ sprites/hazards/ sprites/cast/ sprites/effects/
-  graphics/hud/ graphics/font/ graphics/screens/
+  graphics/hud/ graphics/font/ graphics/screens/ graphics/icons/
   textures/tilesets/<theme>.png
   textures/skies/<theme>-near.png  <theme>-far.png
   maps/<course>/gp.map tt.map hazards.txt ai.txt start.txt
@@ -89,6 +89,9 @@ desmack [FLAGS] <ROM>...
   at scroll 0; `<screen>/bg<n>.png` holds each layer at full width. The podium's BG1 is its Mode 7
   map with the rank 1 banner, and `podium/banner-<rank>.png` holds the banner for ranks 1–3.
   `results` is the background of the results and standings screens, which has only BG2.
+- **Icons**: `graphics/icons/` holds the menus' 16×16 sprites, written with the screens: each cup's
+  icon (`mushroom`, `flower`, `star`) and the trophies cup select shows,
+  `<class>-<bronze|silver|gold>.png`.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
@@ -382,10 +385,22 @@ The course byte gives this order:
 
   The results and standings screens (mode `0x10`, Mode 1) load the title stream again: BG2 is the
   title's landscape in the stream's second CGRAM at `0x4200`, which holds night colours for BG
-  palettes 0–7. Their text is font glyphs on BG3, which the game writes itself, and the
-  mushrooms beside the heading are sprites from the menus stream's 2bpp tiles at `0x3D60`.
-  Those tiles (`0x3900`–`0x3FFF`) also hold Japanese menu text and 16×16 cup icons, in every
-  Region.
+  palettes 0–7. Their text is font glyphs on BG3, which the game writes itself.
+
+  The menus stream's 112 2bpp tiles at `0x3900` are the same in every Region: Japan's 16×16
+  kana for the cup names, "ドライバーズポイント" and "レース結果" (tiles `0x00`–`0x3F` and
+  `0x60`–`0x6F`), then 16×16 icons from `0x44`: a trophy, the mushroom, star and flower, a small
+  trophy and a Mario statue.
+  - Cup select copies tiles `0x00`–`0x5F` to OBJ tile 0. Its ring of sprites is the cup's icon,
+    a tile word per cup at `$84:F81F` (Japan `$84:F697`, Europe `$84:F738`). Beside each cup is
+    the trophy won in it at the selected class (`$0030`): the small trophy at 50cc, the trophy
+    at 100cc, the statue at 150cc, from the tile words at `$84:F833` (Japan `$84:F6AB`, Europe
+    `$84:F74C`), with gold, silver and bronze in palettes 4, 6 and 5. Palette 7 marks a cup not
+    won. SRAM `$30:67F2` holds a byte per cup, 2 bits per class.
+  - The results and standings screens copy all 112 tiles to BG3 tile `0x100`, where Japan's
+    headings use them, and `0x40`–`0x5F` to OBJ tile `0x100`. The six icons beside the heading
+    are the cup's, from the tile words at `$85:BF94` (Japan `$85:BF1E`, Europe `$85:BF9C`); the
+    Special Cup reads all six.
 
   Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
@@ -444,7 +459,5 @@ The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
-- The menus stream's 2bpp tiles at `0x3900`: where the game shows the cup icons and the Japanese
-  text, and how to name them.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.

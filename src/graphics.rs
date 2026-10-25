@@ -60,6 +60,21 @@ fn cup_add(region: Region) -> u16 {
 /// The game copies 96 of the tiles, over a copy of the font from BG tile `0x40`.
 const CUP_TILE_COUNT: usize = 96;
 const CUP_FONT: usize = 0x40;
+/// Cup select also copies those tiles to OBJ tile 0: its ring of sprites is the cup's icon, a
+/// tile word per cup, and beside each cup is the trophy won in it at the selected class.
+fn cup_icons(region: Region) -> usize {
+	match region {
+		Region::Usa => 0x4F81F,
+		Region::Japan => 0x4F697,
+		Region::Europe => 0x4F738,
+	}
+}
+const CUPS: [&str; 3] = ["mushroom", "flower", "star"];
+/// Each class's four tile words, by trophy, from here: the last marks a cup not won, in a palette
+/// that is all black.
+const TROPHIES: usize = 0x14;
+const CLASSES: [(&str, usize); 3] = [("100cc", 0), ("50cc", 8), ("150cc", 16)];
+const RANKS_WON: [&str; 3] = ["bronze", "silver", "gold"];
 
 /// The visible height of a screen.
 const HEIGHT: usize = 224;
@@ -248,12 +263,44 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 			(u16::from_le_bytes([e[0], e[1]]).wrapping_add(cup_add(rom.region))).to_le_bytes()
 		})
 		.collect();
+	let palette = colours(&menus[CUP_CGRAM..CUP_TILES]);
 	write_screen(
 		&dir,
 		"cup-select",
-		&colours(&menus[CUP_CGRAM..CUP_TILES]),
+		&palette,
 		&[layer(&tiles, &map, 1, 4, 0)?],
 	)?;
+
+	// Its sprites: the cups' icons and the trophies.
+	let icons = folder.join("graphics/icons");
+	fs::create_dir_all(&icons)?;
+	let at = cup_icons(rom.region);
+	let mut names: Vec<(String, usize)> = CUPS
+		.iter()
+		.enumerate()
+		.map(|(k, &cup)| (cup.into(), at + k * 2))
+		.collect();
+	for (class, offset) in CLASSES {
+		for (k, rank) in RANKS_WON.iter().enumerate() {
+			names.push((format!("{class}-{rank}"), at + TROPHIES + offset + k * 2));
+		}
+	}
+	for (name, at) in names {
+		let icon = Sprite {
+			x: 0,
+			y: 0,
+			tile: word(&rom.data, at)? as u16,
+			big: true,
+		};
+		let (width, height, pixels) = draw(&[icon], &tiles)?;
+		write_png(
+			&icons.join(format!("{name}.png")),
+			width,
+			height,
+			&palette,
+			&pixels,
+		)?;
+	}
 
 	// BG1 is the Mode 7 map at scroll 0, where the rank 1 banner sits; BG2's rows above the split
 	// are never shown, and point past its tiles.
@@ -791,6 +838,8 @@ mod tests {
 		assert_eq!(size("screens/driver-select/bg4.png"), (256, 224));
 		assert_eq!(size("screens/cup-select.png"), (256, 224));
 		assert_eq!(size("screens/podium/bg2.png"), (256, 224));
+		assert_eq!(size("icons/star.png"), (16, 16));
+		assert_eq!(size("icons/150cc-gold.png"), (16, 16));
 		assert_eq!(size("hud/box/star.png"), (32, 24));
 		assert_eq!(size("hud/timer.png"), (64, 16));
 		assert_eq!(size("hud/rank/race/8.png"), (16, 20));
