@@ -4,7 +4,7 @@ use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use anyhow::{Context, bail};
+use anyhow::Context;
 use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
@@ -174,50 +174,20 @@ fn may_write(folder: &Path, force: bool, tty: bool) -> anyhow::Result<bool> {
 	Ok(answer == Some(true))
 }
 
-fn extract(
-	rom: &Path,
-	folder: &Path,
-	categories: &[Category],
-	force: bool,
-	tty: bool,
-) -> anyhow::Result<String> {
-	let rom = Rom::parse(fs::read(rom).context("can't read it")?)?;
-	if !may_write(folder, force, tty)? {
-		bail!("skipped, {} exists", folder.display());
+fn extract(category: Category, rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+	match category {
+		Category::Drivers => sprites::drivers(rom, folder),
+		Category::Items => sprites::items(rom, folder),
+		Category::Hazards => sprites::hazards(rom, folder),
+		Category::Cast => sprites::cast(rom, folder),
+		Category::Effects => sprites::effects(rom, folder),
+		Category::Hud => graphics::hud(rom, folder),
+		Category::Font => graphics::font(rom, folder),
+		Category::Screens => graphics::screens(rom, folder),
+		Category::Tilesets => textures::tilesets(rom, folder),
+		Category::Skies => textures::skies(rom, folder),
+		Category::Maps => maps::extract(rom, folder),
 	}
-	fs::create_dir_all(folder)
-		.with_context(|| format!("skipped, can't write to {}", folder.display()))?;
-
-	let (mut done, mut failed) = (Vec::new(), Vec::new());
-	for &category in categories {
-		let result = match category {
-			Category::Drivers => sprites::drivers(&rom, folder),
-			Category::Items => sprites::items(&rom, folder),
-			Category::Hazards => sprites::hazards(&rom, folder),
-			Category::Cast => sprites::cast(&rom, folder),
-			Category::Effects => sprites::effects(&rom, folder),
-			Category::Hud => graphics::hud(&rom, folder),
-			Category::Font => graphics::font(&rom, folder),
-			Category::Screens => graphics::screens(&rom, folder),
-			Category::Tilesets => textures::tilesets(&rom, folder),
-			Category::Skies => textures::skies(&rom, folder),
-			Category::Maps => maps::extract(&rom, folder),
-		};
-		match result {
-			Ok(()) => done.push(category.to_string()),
-			Err(error) => failed.push(format!("{category} ({error:#})")),
-		}
-	}
-	let mut line = if done.is_empty() {
-		format!("{rom}, nothing extracted")
-	} else {
-		format!("{rom}, extracted {}", done.join(", "))
-	};
-	if !failed.is_empty() {
-		line += &format!(", failed {}", failed.join(", "));
-		bail!(line);
-	}
-	Ok(line)
 }
 
 fn main() -> ExitCode {
@@ -237,7 +207,23 @@ fn main() -> ExitCode {
 		};
 	}
 
+	// `required_unless_present` guarantees a ROM once `--completions` is handled.
+	let path = cli.rom.as_deref().unwrap();
+	let rom = match fs::read(path).context("can't read it").and_then(Rom::parse) {
+		Ok(rom) => rom,
+		Err(error) => {
+			eprintln!("{}: {error:#}", path.display());
+			return ExitCode::FAILURE;
+		}
+	};
+	clark::intro(rom.to_string());
+	if rom.beta() {
+		clark::cancel("betas can't be extracted yet");
+		return ExitCode::FAILURE;
+	}
+
 	let tty = io::stdin().is_terminal();
+	let folder = path.with_extension("");
 	let categories = match choose(&cli, tty) {
 		Ok(Some(categories)) => categories,
 		Ok(None) => {
@@ -245,22 +231,46 @@ fn main() -> ExitCode {
 			return ExitCode::SUCCESS;
 		}
 		Err(error) => {
-			eprintln!("{error:#}");
+			clark::cancel(format!("{error:#}"));
 			return ExitCode::FAILURE;
 		}
 	};
-
-	// `required_unless_present` guarantees a ROM once `--completions` is handled.
-	let rom = cli.rom.as_deref().unwrap();
-	match extract(rom, &rom.with_extension(""), &categories, cli.force, tty) {
-		Ok(line) => {
-			eprintln!("{}: {line}", rom.display());
-			ExitCode::SUCCESS
+	match may_write(&folder, cli.force, tty) {
+		Ok(true) => {}
+		Ok(false) => {
+			clark::cancel(format!("skipped, {} exists", folder.display()));
+			return ExitCode::FAILURE;
 		}
 		Err(error) => {
-			eprintln!("{}: {error:#}", rom.display());
-			ExitCode::FAILURE
+			clark::cancel(format!("{error:#}"));
+			return ExitCode::FAILURE;
 		}
+	}
+	if let Err(error) = fs::create_dir_all(&folder) {
+		clark::cancel(format!("can't write to {}: {error}", folder.display()));
+		return ExitCode::FAILURE;
+	}
+
+	// Off a terminal, one line per message rather than frames.
+	let ci = !io::stdout().is_terminal();
+	let mut ok = true;
+	for category in categories {
+		let spinner = clark::spinner()
+			.ci(ci)
+			.start(format!("extracting {category}"));
+		match extract(category, &rom, &folder) {
+			Ok(()) => spinner.stop(format!("extracted {category}")),
+			Err(error) => {
+				spinner.error(format!("{category} failed: {error:#}"));
+				ok = false;
+			}
+		}
+	}
+	clark::outro(format!("saved to {}", folder.display()));
+	if ok {
+		ExitCode::SUCCESS
+	} else {
+		ExitCode::FAILURE
 	}
 }
 

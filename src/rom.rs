@@ -10,15 +10,26 @@ pub enum Region {
 }
 
 impl Region {
-	/// The CRC32 of the known dump, without a copier header.
-	fn crc(self) -> u32 {
+	fn flag(self) -> &'static str {
 		match self {
-			Region::Japan => 0xC800_2453,
-			Region::Usa => 0xCD80_DB86,
-			Region::Europe => 0x5641_0E5E,
+			Region::Japan => "🇯🇵",
+			Region::Usa => "🇺🇸",
+			Region::Europe => "🇪🇺",
 		}
 	}
 }
+
+/// The known dumps, by CRC32 without a copier header. A beta's header can name another Region, or
+/// be missing, so the Region here is the one the dump is credited to.
+const DUMPS: [(u32, Region, &str); 7] = [
+	(0xC800_2453, Region::Japan, "v1.0"),
+	(0xCD80_DB86, Region::Usa, "v1.0"),
+	(0x5641_0E5E, Region::Europe, "v1.0"),
+	(0x6AAF_031A, Region::Japan, "Beta 1"),
+	(0x8DC4_E42F, Region::Japan, "Beta 2"),
+	(0xF575_F2A0, Region::Japan, "Beta 3"),
+	(0x54F5_E6D4, Region::Usa, "Beta"),
+];
 
 impl fmt::Display for Region {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -34,14 +45,24 @@ pub struct Rom {
 	/// Without the copier header, so file offsets match the ROM facts.
 	pub data: Vec<u8>,
 	pub region: Region,
-	pub revision: u8,
-	pub known: bool,
+	pub crc: u32,
+	/// The known dump's version, or `None` for a modified ROM.
+	pub version: Option<&'static str>,
 }
 
 impl Rom {
 	pub fn parse(mut data: Vec<u8>) -> anyhow::Result<Rom> {
 		if data.len() % 0x40000 == 512 {
 			data.drain(..512);
+		}
+		let crc = crc32fast::hash(&data);
+		if let Some(&(_, region, version)) = DUMPS.iter().find(|dump| dump.0 == crc) {
+			return Ok(Rom {
+				data,
+				region,
+				crc,
+				version: Some(version),
+			});
 		}
 		ensure!(
 			data.len() >= 0x10000
@@ -57,20 +78,30 @@ impl Rom {
 			2 => Region::Europe,
 			other => bail!("unsupported Region {other}"),
 		};
-		let known = crc32fast::hash(&data) == region.crc();
 		Ok(Rom {
-			revision: data[0xFFDB],
-			region,
-			known,
 			data,
+			region,
+			crc,
+			version: None,
 		})
+	}
+
+	/// Betas keep their assets elsewhere, so they are named but not extracted.
+	pub fn beta(&self) -> bool {
+		self.version
+			.is_some_and(|version| version.starts_with("Beta"))
 	}
 }
 
 impl fmt::Display for Rom {
 	fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-		let kind = if self.known { "known" } else { "modified" };
-		write!(f, "{} 1.{}, {kind}", self.region, self.revision)
+		write!(
+			f,
+			"{} Super Mario Kart {:08X} ({})",
+			self.region.flag(),
+			self.crc,
+			self.version.unwrap_or("unknown")
+		)
 	}
 }
 
@@ -94,7 +125,8 @@ mod tests {
 		data.extend(header(2));
 		let rom = Rom::parse(data).unwrap();
 		assert_eq!(rom.data.len(), 0x40000);
-		assert_eq!(rom.to_string(), "Europe 1.0, modified");
+		assert_eq!(rom.region, Region::Europe);
+		assert_eq!(rom.version, None);
 	}
 
 	#[test]
@@ -112,6 +144,6 @@ mod tests {
 			return;
 		};
 		let rom = Rom::parse(std::fs::read(path).unwrap()).unwrap();
-		assert!(rom.known, "{rom}");
+		assert!(rom.version.is_some_and(|_| !rom.beta()), "{rom}");
 	}
 }

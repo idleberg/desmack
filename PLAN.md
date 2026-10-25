@@ -8,19 +8,28 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
 ### ROMs
 
 - desmack supports the Japan, USA and Europe Regions. All three known dumps are Revision 1.0.
-- A file is accepted if its header says it is SMK. A copier header is removed before reading.
+- A file is accepted if it is a known dump or its header says it is SMK. A copier header is
+  removed before reading.
 - desmack compares the CRC32 of the ROM, without the copier header, to the known dumps:
 
-  | Region | CRC32 |
-  |---|---|
-  | Japan | `C8002453` |
-  | USA | `CD80DB86` |
-  | Europe | `56410E5E` |
+  | Region | Version | CRC32 |
+  |---|---|---|
+  | Japan | v1.0 | `C8002453` |
+  | USA | v1.0 | `CD80DB86` |
+  | Europe | v1.0 | `56410E5E` |
+  | Japan | Beta 1 | `6AAF031A` |
+  | Japan | Beta 2 | `8DC4E42F` |
+  | Japan | Beta 3 | `F575F2A0` |
+  | USA | Beta | `54F5E6D4` |
 
+- **Betas** are named but not extracted: their assets are not at the retail offsets. Their headers
+  can't be trusted either: Beta 1 has none, Beta 2 says USA, and Beta 3 and the USA Beta say
+  Europe.
 - **Modified ROMs**: desmack reads the Region from `$FFD9` and uses that Region's offsets. A
   category it can't decode is reported as failed, and the other categories are still extracted.
-- **Report**: each ROM gets one line with its Region, Revision, whether it is known or modified,
-  and the categories extracted or failed. There is no `--info` flag.
+- **Report**: clark, the same with or without a TTY. An intro names the ROM
+  (`🇺🇸 Super Mario Kart CD80DB86 (v1.0)`, or `(unknown)` for a modified ROM), then one spinner per
+  category, then an outro with the output folder. There is no `--info` flag.
 
 ### CLI
 
