@@ -88,6 +88,7 @@ desmack [FLAGS] <ROM>...
 - **Screens**: `graphics/screens/<screen>.png` is the screen as shown, 256×224 with every layer
   at scroll 0; `<screen>/bg<n>.png` holds each layer at full width. The podium's BG1 is its Mode 7
   map with the rank 1 banner, and `podium/banner-<rank>.png` holds the banner for ranks 1–3.
+  `results` is the background of the results and standings screens, which has only BG2.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race
@@ -358,6 +359,9 @@ The course byte gives this order:
     right half, tile `0x120` + 2 × driver in the driver's sprite palette. Every 8 frames the face
     flips to the happy one (ranks 1–4) or the sad one, which USA `$80:8D87` uploads to `0x144`
     + 2 × slot. A digit may flash through palettes 1, 1, 5 and 6 (USA `$80:8C91`).
+  - LAP TIME panel: no graphics of its own. After the finish the game writes font glyphs (the
+    header is glyphs `0x2D`–`0x35`, the rules `0x9E`) into OBJ tiles from `0x180` and shows
+    them as rows of 8×8 sprites in palette 4.
 - **Effects**: the race loads `0x903` at OBJ tile 0 (water, grass) and `0x49C19` (Japan and
   Europe `0x49C1C`) at `0x100` (dust, smoke). `0x5EE00`, unpacked to `$7E:2000`, is six
   metasprite tables in a row, each a list of offsets from itself to records in Lakitu's format
@@ -375,6 +379,13 @@ The course byte gives this order:
   | Title | `0x71996` (Japan `0x71C48`) | VRAM `0x0000`–`0x37FF` (tiles, BG1 map at `0x2000`, BG2 64×32 at `0x2800`), CGRAM at `0x4000`; Mode 1 |
   | Menus | `0x70B29` (Japan `0x70D31`) | Driver select (Mode 0): BG1–3 maps at `0x0`, `0x800`, `0x1800`, CGRAM `0x2800`, 2bpp tiles `0x2A00`; BG4 is entry `0x3014` repeated. Cup select (Mode 1): BG1 map `0x2F00` plus `0xF440` (Japan `0x1040`), CGRAM `0x3700`, 96 2bpp tiles at `0x3900` over the font |
   | Podium | `0x737DA` (Japan `0x73A63`), compressed twice | OBJ tiles from `0x0000` (VRAM `0x8000`), BG2 map `0x3800`, BG2 4bpp tiles `0x4000`, CGRAM `0x4800`; Mode 7 above line 136, Mode 1 BG2 below |
+
+  The results and standings screens (mode `0x10`, Mode 1) load the title stream again: BG2 is the
+  title's landscape in the stream's second CGRAM at `0x4200`, which holds night colours for BG
+  palettes 0–7. Their text is font glyphs on BG3, which the game writes itself, and the
+  mushrooms beside the heading are sprites from the menus stream's 2bpp tiles at `0x3D60`.
+  Those tiles (`0x3900`–`0x3FFF`) also hold Japanese menu text and 16×16 cup icons, in every
+  Region.
 
   Bank 1's screen table at `$81:E049` lists each mode's set-up routine; writing a mode to `$32`
   with `$0160 = 0x8000` switches to it in Mesen. Mode `0x0C` is the credits race, `0x1C` the
@@ -433,6 +444,7 @@ The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
 - Effect names: which surface and mode use the second dust and smoke set (`table 0`).
-- The finish: the LAP TIME panel.
+- The menus stream's 2bpp tiles at `0x3900`: where the game shows the cup icons and the Japanese
+  text, and how to name them.
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.

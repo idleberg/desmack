@@ -23,6 +23,9 @@ fn title(region: Region) -> usize {
 	}
 }
 const TITLE_CGRAM: usize = 0x4000;
+/// The results and standings screens show the title's BG2 at night, in the stream's second CGRAM;
+/// their text is font glyphs the game writes to BG3.
+const RESULTS_CGRAM: usize = 0x4200;
 /// The title's layers in VRAM: the logo on BG1, and the 512-pixel landscape that scrolls behind
 /// it on BG2.
 const TITLE_BG1: usize = 0x2000;
@@ -202,6 +205,12 @@ pub fn screens(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 			layer(&vram, &vram[TITLE_BG1..], 1, 4, 0)?,
 			layer(&vram, &vram[TITLE_BG2..], 2, 4, 0)?,
 		],
+	)?;
+	write_screen(
+		&dir,
+		"results",
+		&colours(bytes(&vram, RESULTS_CGRAM, 512)?),
+		&[Vec::new(), layer(&vram, &vram[TITLE_BG2..], 2, 4, 0)?],
 	)?;
 
 	let menus = stream(&rom.data, menus(rom.region))?;
@@ -629,6 +638,10 @@ fn write_screen(dir: &Path, name: &str, palette: &[u8], layers: &[Vec<u8>]) -> a
 	fs::create_dir_all(dir.join(name))?;
 	let mut screen = vec![0; 256 * HEIGHT];
 	for (n, pixels) in layers.iter().enumerate().rev() {
+		// A layer the screen doesn't use gets no file.
+		if pixels.is_empty() {
+			continue;
+		}
 		let width = pixels.len() / HEIGHT;
 		write_png(
 			&dir.join(name).join(format!("bg{}.png", n + 1)),
@@ -773,6 +786,8 @@ mod tests {
 		assert_eq!(size("font/font.png"), (128, 128));
 		assert_eq!(size("screens/title.png"), (256, 224));
 		assert_eq!(size("screens/title/bg2.png"), (512, 224));
+		assert_eq!(size("screens/results/bg2.png"), (512, 224));
+		assert!(!graphics.join("screens/results/bg1.png").exists());
 		assert_eq!(size("screens/driver-select/bg4.png"), (256, 224));
 		assert_eq!(size("screens/cup-select.png"), (256, 224));
 		assert_eq!(size("screens/podium/bg2.png"), (256, 224));
