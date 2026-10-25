@@ -355,6 +355,10 @@ The course byte gives this order:
   mushroom, fireball, egg. Each is four 16×16 frames of 4 consecutive tiles, then four 8×8
   frames; the game copies one into OBJ tile `0x160` per size. Palettes, from any Theme: banana,
   shell and fireball 6, red shell, mushroom and egg 5.
+- **Coin**: the coin a driver spends (item `0xC007` in `$0D70` fires it) or loses is one 16×16
+  sprite in palette 6. `$85:E685` picks its tile word from `0x5E67F` (all Regions) by
+  `$1EE6 / 4`, which cycles through the first three: OBJ tiles `0x60`, `0x86` and `0xA2` of the
+  race sprites.
 - **Lakitu**: the `0x10000` stream's tiles 16–143 load at OBJ tile `0x40`, 12–15 (the start
   lights) at `0xFB`. `0x5E264` (all Regions) is a table of 14 offsets from itself to
   metasprite records: a count, then x and y (i8), tile and OAM attribute per sprite, then the
@@ -402,7 +406,11 @@ The course byte gives this order:
   default; `$D210`, set by `$84:E62E` in a Time Trial against a ghost, whose dust and smoke use
   table 0's animations 0–11; and `$D252`, used for a kart whose shrink timer (`$84`, set to
   `0x440` by lightning) runs, with table 0's animations 12–14. Colours come from the Theme palette, so
-  Vanilla Lake's dust is snow, Bowser Castle's spray lava and Choco Island's mud.
+  Vanilla Lake's dust is snow, Bowser Castle's spray lava and Choco Island's mud. A kart sinking
+  in deep water plays table 2's script `$80:D1A6`: the splash (frame 0), sparkles (2–4), then
+  frames 5 and 1 for 16 frames each, the ripple over the sunken kart, until Lakitu fishes it
+  out. Frames 6–9 belong to effect 9, which `$80:D3D2` picks for a slow kart in shallow water or
+  mud.
 - **Font**: `0x70000`, 256 2bpp glyphs (Japan's has kana), loaded as OBJ tiles 0–255; menus
   use sprite palette 4 of the title's CGRAM. Cup select also loads it as BG tiles from `0x40`.
 - **Screens**: the game unpacks each into VRAM and CGRAM; tile priorities are left out.

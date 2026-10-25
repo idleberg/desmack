@@ -1,5 +1,4 @@
 use std::fs;
-use std::ops::Range;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
@@ -22,6 +21,11 @@ const ITEM_SETS: [(&str, &[usize], u16); 6] = [
 	("fireball", &[4], 6),
 	("egg", &[5], 5),
 ];
+
+/// The coin a driver spends or loses spins through three 16×16 tile words of the race sprites, in
+/// palette 6. A fourth word follows, which the game never reaches.
+const COIN: usize = 0x5E67F;
+const COIN_FRAMES: usize = 3;
 
 /// Course list group 2: a Theme's 57 hazard tiles, which the game loads at OBJ tile `0xC0`.
 const HAZARD_TILES: usize = 2;
@@ -261,21 +265,24 @@ const EFFECT_TABLES: usize = 0x5EE00;
 /// Each effect's table and the value the game XORs into its tile words, as bank 0's effect list
 /// pairs them: `0x100` picks the dust tiles, `0x400` swaps sprite palette 15 for 13. Frames come
 /// in fours, each four one looping animation. Table 0's first 48 frames are for a Time Trial
-/// against a ghost, the rest for a kart shrunk by lightning.
-const EFFECTS: [(&str, usize, u16, Range<usize>); 11] = [
-	("dust", 5, 0x100, ALL),
-	("smoke", 5, 0x500, ALL),
-	("dust-vs-ghost", 0, 0x100, 0..48),
-	("smoke-vs-ghost", 0, 0x500, 0..48),
-	("dust-small", 0, 0x100, 48..ALL.end),
-	("smoke-small", 0, 0x500, 48..ALL.end),
-	("spray", 1, 0, ALL),
-	("splash", 2, 0, ALL),
-	("grass", 3, 0, ALL),
-	("smoke-puff", 4, 0x100, ALL),
-	("dust-puff", 4, 0x500, ALL),
+/// against a ghost, the rest for a kart shrunk by lightning. Table 2's frames 1 and 5 are the
+/// ripple over a sunken kart, which the splash's animation ends by looping.
+type Picks = fn(usize) -> bool;
+
+const EFFECTS: [(&str, usize, u16, Picks); 12] = [
+	("dust", 5, 0x100, |_| true),
+	("smoke", 5, 0x500, |_| true),
+	("dust-vs-ghost", 0, 0x100, |k| k < 48),
+	("smoke-vs-ghost", 0, 0x500, |k| k < 48),
+	("dust-small", 0, 0x100, |k| k >= 48),
+	("smoke-small", 0, 0x500, |k| k >= 48),
+	("spray", 1, 0, |_| true),
+	("splash", 2, 0, |k| k != 1 && k != 5),
+	("ripple", 2, 0, |k| k == 1 || k == 5),
+	("grass", 3, 0, |_| true),
+	("smoke-puff", 4, 0x100, |_| true),
+	("dust-puff", 4, 0x500, |_| true),
 ];
-const ALL: Range<usize> = 0..usize::MAX;
 
 /// One OAM entry: a position, a tile word (tile, palette, flips) and whether it is 16×16.
 #[derive(Clone, Copy)]
@@ -320,7 +327,26 @@ pub fn items(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 			&palette,
 		)?;
 	}
-	Ok(())
+	write_frames(
+		&folder.join("sprites/items/coin"),
+		&tile_words(&rom.data, COIN, COIN_FRAMES, true)?,
+		&race_tiles(rom)?,
+		&palette,
+	)
+}
+
+/// One single-sprite frame per tile word of the table at `at`.
+fn tile_words(data: &[u8], at: usize, count: usize, big: bool) -> anyhow::Result<Vec<Vec<Sprite>>> {
+	(0..count)
+		.map(|k| {
+			Ok(vec![Sprite {
+				x: 0,
+				y: 0,
+				tile: word(data, at + k * 2)? as u16,
+				big,
+			}])
+		})
+		.collect()
 }
 
 pub fn hazards(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
@@ -381,20 +407,9 @@ pub fn cast(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		)?;
 	}
 	for (name, at, count, big) in podium_singles(rom.region) {
-		let frames = (0..count)
-			.map(|k| {
-				let tile = word(&rom.data, at + k * 2)? as u16;
-				Ok(vec![Sprite {
-					x: 0,
-					y: 0,
-					tile,
-					big,
-				}])
-			})
-			.collect::<anyhow::Result<Vec<_>>>()?;
 		write_frames(
 			&folder.join("sprites/cast/podium").join(name),
-			&frames,
+			&tile_words(&rom.data, at, count, big)?,
 			&objects,
 			&colours,
 		)?;
@@ -501,10 +516,10 @@ pub fn effects(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let palettes = (0..THEMES.len())
 		.map(|theme| palette(rom, theme))
 		.collect::<anyhow::Result<Vec<_>>>()?;
-	for (name, table, xor, range) in EFFECTS {
+	for (name, table, xor, picks) in EFFECTS {
 		let start = starts[table];
 		let mut frames = Vec::new();
-		for k in range.start..range.end.min(word(&tables, start)? / 2) {
+		for k in (0..word(&tables, start)? / 2).filter(|&k| picks(k)) {
 			let mut sprites = metasprite(&tables, start + word(&tables, start + k * 2)?)?;
 			for sprite in &mut sprites {
 				sprite.tile ^= xor;
@@ -878,7 +893,10 @@ mod tests {
 		assert_eq!(count("effects/smoke-small"), 12);
 		assert_eq!(count("effects/spray"), THEMES.len());
 		assert_eq!(count("effects/spray/koopa-beach"), 48);
+		assert_eq!(count("effects/splash/koopa-beach"), 8);
+		assert_eq!(count("effects/ripple/koopa-beach"), 2);
 		assert_eq!(count("items/green-shell"), 16);
+		assert_eq!(count("items/coin"), COIN_FRAMES);
 		assert_eq!(count("hazards/pipe"), 11);
 		assert_eq!(count("hazards/piranha-plant"), 20);
 		assert_eq!(count("hazards/thwomp"), 11 + 5);

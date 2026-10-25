@@ -100,7 +100,7 @@ Characters who appear in the game but don't race: Lakitu with his props, and the
 _Avoid_: NPC, extra
 
 **Effect**:
-A short-lived sprite drawn by something happening in the race: dust, sparks, splashes, smoke, and the karts' shadows.
+A short-lived sprite drawn by something happening in the race: dust, sparks, splashes, ripples, smoke, and the karts' shadows.
 _Avoid_: particle, FX
 
 ## Around the race
