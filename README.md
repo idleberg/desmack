@@ -1,6 +1,6 @@
 # desmack
 
-> A command-line tool that extracts the assets of a Super Mario Kart SNES ROM
+> A command-line tool that extracts the assets of a SMK ROM (SNES)
 
 ![Crates.io License](https://img.shields.io/crates/l/desmack?style=for-the-badge)
 [![Crates.io Version](https://img.shields.io/crates/v/desmack?style=for-the-badge)](https://crates.io/crates/desmack)
