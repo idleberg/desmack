@@ -169,7 +169,7 @@ is HiROM: file offset = `(bank & 0x3F) << 16 | addr`.
 
 - Title `SUPER MARIO KART` at `$FFC0`.
 - `$FFD5 = 0x31`, `$FFD6 = 0x05`, `$FFD8 = 0x01`.
-- Region at `$FFD9`: 0 = Japan, 1 = USA, 2 = Europe. Version at `$FFDB`.
+- Region at `$FFD9`: 0 = Japan, 1 = USA, 2 = Europe. Revision at `$FFDB`.
 - Copier header present when `size % 0x40000 == 512`.
 
 ### Compression

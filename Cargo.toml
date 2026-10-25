@@ -1,6 +1,6 @@
 [package]
 name = "desmack"
-version = "0.0.0"
+version = "0.1.0"
 description = "Extracts the assets of a Super Mario Kart SNES ROM"
 authors = ["Jan T. Sott"]
 repository = "https://github.com/idleberg/desmack"
