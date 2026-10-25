@@ -49,13 +49,14 @@ struct Cli {
 	#[arg(long, help = "Extract the course maps")]
 	maps: bool,
 
-	#[arg(long, help = "Extract every category, without asking")]
+	#[arg(short, long, help = "Extract every category, without asking")]
 	all: bool,
 
-	#[arg(long, help = "Overwrite output folders without asking")]
+	#[arg(short, long, help = "Overwrite output folders without asking")]
 	force: bool,
 
 	#[arg(
+		short,
 		long,
 		value_name = "SHELL",
 		exclusive = true,

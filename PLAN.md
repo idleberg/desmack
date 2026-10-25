@@ -37,9 +37,9 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
 desmack [FLAGS] <ROM>
   --drivers --items --hazards --cast --effects
   --hud --font --screens --tilesets --skies --maps
-  --all          every category, no dialog
-  --force        overwrite without asking
-  --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
+  -a, --all      every category, no dialog
+  -f, --force    overwrite without asking
+  -c, --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
 ```
 
 - **No category flag, stdin is a TTY**: clark `multiselect` dialogs, for their `a`/`i` shortcuts.
