@@ -1,7 +1,6 @@
 # desmack
 
-Words for the assets of a Super Mario Kart (SMK) SNES ROM. Names follow Epic Edit, the
-Super Mario Wiki and the glossary of kart-prototype, the ZDoom port of SMK.
+Words for the assets of a Super Mario Kart (SMK) SNES ROM.
 
 ## The ROM
 
