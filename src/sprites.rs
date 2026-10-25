@@ -1,4 +1,5 @@
 use std::fs;
+use std::ops::Range;
 use std::path::Path;
 
 use anyhow::{Context, bail, ensure};
@@ -254,18 +255,22 @@ fn dust_tiles(region: Region) -> usize {
 const EFFECT_TABLES: usize = 0x5EE00;
 /// Each effect's table and the value the game XORs into its tile words, as bank 0's effect list
 /// pairs them: `0x100` picks the dust tiles, `0x400` swaps sprite palette 15 for 13. Frames come
-/// in fours, each four one looping animation.
-const EFFECTS: [(&str, usize, u16); 9] = [
-	("dust", 5, 0x100),
-	("smoke", 5, 0x500),
-	("dust-alt", 0, 0x100),
-	("smoke-alt", 0, 0x500),
-	("spray", 1, 0),
-	("splash", 2, 0),
-	("grass", 3, 0),
-	("smoke-puff", 4, 0x100),
-	("dust-puff", 4, 0x500),
+/// in fours, each four one looping animation. Table 0's first 48 frames are for a Time Trial
+/// against a ghost, the rest for a kart shrunk by lightning.
+const EFFECTS: [(&str, usize, u16, Range<usize>); 11] = [
+	("dust", 5, 0x100, ALL),
+	("smoke", 5, 0x500, ALL),
+	("dust-vs-ghost", 0, 0x100, 0..48),
+	("smoke-vs-ghost", 0, 0x500, 0..48),
+	("dust-small", 0, 0x100, 48..ALL.end),
+	("smoke-small", 0, 0x500, 48..ALL.end),
+	("spray", 1, 0, ALL),
+	("splash", 2, 0, ALL),
+	("grass", 3, 0, ALL),
+	("smoke-puff", 4, 0x100, ALL),
+	("dust-puff", 4, 0x500, ALL),
 ];
+const ALL: Range<usize> = 0..usize::MAX;
 
 /// One OAM entry: a position, a tile word (tile, palette, flips) and whether it is 16×16.
 #[derive(Clone, Copy)]
@@ -491,10 +496,10 @@ pub fn effects(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let palettes = (0..THEMES.len())
 		.map(|theme| palette(rom, theme))
 		.collect::<anyhow::Result<Vec<_>>>()?;
-	for (name, table, xor) in EFFECTS {
+	for (name, table, xor, range) in EFFECTS {
 		let start = starts[table];
 		let mut frames = Vec::new();
-		for k in 0..word(&tables, start)? / 2 {
+		for k in range.start..range.end.min(word(&tables, start)? / 2) {
 			let mut sprites = metasprite(&tables, start + word(&tables, start + k * 2)?)?;
 			for sprite in &mut sprites {
 				sprite.tile ^= xor;
@@ -857,6 +862,7 @@ mod tests {
 		assert_eq!(count("cast/podium/mario"), 2 + 3 + 7);
 		assert_eq!(count("cast/podium/confetti"), 18);
 		assert_eq!(count("effects/smoke"), 48);
+		assert_eq!(count("effects/smoke-small"), 12);
 		assert_eq!(count("effects/spray"), THEMES.len());
 		assert_eq!(count("effects/spray/koopa-beach"), 48);
 		assert_eq!(count("items/green-shell"), 16);

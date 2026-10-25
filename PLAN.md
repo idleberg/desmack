@@ -371,7 +371,10 @@ The course byte gives this order:
   (a record's OAM high bits take `count / 4 + 1` bytes). Bank 0's effect list (USA `$80:D1CE`)
   gives each surface a table, a value XORed into the tile words (`0x100` picks the dust tiles,
   `0x400` swaps sprite palette 15 for 13) and animation scripts of (duration, frame) byte pairs,
-  `0x80` jumping to an address; frames come in fours. Colours come from the Theme palette, so
+  `0x80` jumping to an address; frames come in fours. The list is three groups of 11 effects: `$D1CE`, the
+  default; `$D210`, set by `$84:E62E` in a Time Trial against a ghost, whose dust and smoke use
+  table 0's animations 0–11; and `$D252`, used for a kart whose shrink timer (`$84`, set to
+  `0x440` by lightning) runs, with table 0's animations 12–14. Colours come from the Theme palette, so
   Vanilla Lake's dust is snow, Bowser Castle's spray lava and Choco Island's mud.
 - **Font**: `0x70000`, 256 2bpp glyphs (Japan's has kana), loaded as OBJ tiles 0–255; menus
   use sprite palette 4 of the title's CGRAM. Cup select also loads it as BG tiles from `0x40`.
@@ -458,6 +461,5 @@ The course byte gives this order:
 The decisions are all made; what's left is research:
 
 - Driver frame names: which angle and set each frame is.
-- Effect names: which surface and mode use the second dust and smoke set (`table 0`).
 - Item icon 10: it shows only in the roulette at `$81:B348`, which no code calls directly, so it
   is named `unused`.
