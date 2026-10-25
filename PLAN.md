@@ -131,7 +131,7 @@ desmack [FLAGS] <ROM>
   TTY detection uses `std::io::IsTerminal`.
 
 - **Cargo**: edition 2024, binary only, `[profile.release] lto = true, strip = true`.
-- **Tooling**, copied from ardent (`~/Repositories/_nsis/ardent`):
+- **Tooling**, copied from ardent:
   - mise tasks `build`, `format`, `format:check`, `lint`, `test`
   - `hk.pkl` pre-commit hook
   - `.github/workflows/ci.yml` and `release.yml`
