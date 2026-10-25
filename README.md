@@ -10,10 +10,10 @@ desmack ships no game data. Bring your own ROM (Japan, USA or Europe).
 ```sh
 desmack smk.sfc              # pick categories in a dialog
 desmack --all smk.sfc        # everything, no dialog
-desmack --maps --tilesets *.sfc
+desmack --maps --tilesets smk.sfc
 ```
 
-Each ROM's assets go to a folder next to it, named after the ROM. `desmack --help` lists every
+The assets go to a folder next to the ROM, named after it. `desmack --help` lists every
 flag.
 
 Shell completions:

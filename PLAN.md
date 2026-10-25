@@ -25,7 +25,7 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
 ### CLI
 
 ```
-desmack [FLAGS] <ROM>...
+desmack [FLAGS] <ROM>
   --drivers --items --hazards --cast --effects
   --hud --font --screens --tilesets --skies --maps
   --all          every category, no dialog
@@ -33,19 +33,16 @@ desmack [FLAGS] <ROM>...
   --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
 ```
 
-- **No category flag, stdin is a TTY**: one clark `group_multiselect` dialog for all ROMs. Its
+- **No category flag, stdin is a TTY**: one clark `group_multiselect` dialog. Its
   groups are sprites, graphics, textures and maps, and no category starts selected.
 - **No category flag, no TTY**: everything is extracted.
-- **Output**: `<rom dir>/<rom stem>/`, next to each ROM.
-- **Same file passed twice**: desmack resolves the real path and uses the file once, without saying so.
-- **Two ROMs, one output folder** (e.g. `smk.sfc` and `smk.smc`): both are reported and skipped.
-  An output folder desmack can't write to is reported and skipped the same way. The other ROMs
-  continue either way.
+- **Output**: `<rom dir>/<rom stem>/`, next to the ROM.
+- **Output folder desmack can't write to**: reported, non-zero exit.
 - **Output folder already exists**:
   - with a TTY, one clark confirm per folder;
   - with `--force`, it is overwritten;
   - with no TTY and no `--force`, the ROM is reported and skipped.
-- **Exit code**: non-zero if any ROM failed or was skipped.
+- **Exit code**: non-zero if the ROM failed or was skipped.
 
 ### Output layout
 

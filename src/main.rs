@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
@@ -24,8 +23,8 @@ use rom::Rom;
 	about = "Extracts the assets of a Super Mario Kart SNES ROM"
 )]
 struct Cli {
-	#[arg(required_unless_present = "completions", help = "ROMs to extract")]
-	roms: Vec<PathBuf>,
+	#[arg(required_unless_present = "completions", help = "ROM to extract")]
+	rom: Option<PathBuf>,
 
 	#[arg(long, help = "Extract driver sprites")]
 	drivers: bool,
@@ -140,44 +139,6 @@ impl Cli {
 	}
 }
 
-/// What to do with one ROM: write to `Ok(folder)`, or skip it with `Err(reason)`.
-type Job = (PathBuf, Result<PathBuf, String>);
-
-/// Resolves every ROM to its real path, drops repeats, and refuses any two ROMs that would share
-/// an output folder.
-fn plan(roms: &[PathBuf]) -> Vec<Job> {
-	let mut seen = HashSet::new();
-	let mut jobs: Vec<Job> = Vec::new();
-	for rom in roms {
-		match fs::canonicalize(rom) {
-			Ok(real) if !seen.insert(real.clone()) => {}
-			Ok(real) => {
-				let folder = real.with_extension("");
-				jobs.push((real, Ok(folder)));
-			}
-			Err(error) => jobs.push((rom.clone(), Err(error.to_string()))),
-		}
-	}
-
-	let mut users: HashMap<PathBuf, usize> = HashMap::new();
-	for (_, folder) in &jobs {
-		if let Ok(folder) = folder {
-			*users.entry(folder.clone()).or_default() += 1;
-		}
-	}
-	for (_, folder) in &mut jobs {
-		if let Ok(path) = folder
-			&& users[path] > 1
-		{
-			*folder = Err(format!(
-				"skipped, another ROM also writes to {}",
-				path.display()
-			));
-		}
-	}
-	jobs
-}
-
 /// The categories the user asked for: flags first, then the dialog, then everything.
 /// `None` means the dialog was cancelled.
 fn choose(cli: &Cli, tty: bool) -> anyhow::Result<Option<Vec<Category>>> {
@@ -289,23 +250,17 @@ fn main() -> ExitCode {
 		}
 	};
 
-	let mut ok = true;
-	for (rom, folder) in plan(&cli.roms) {
-		let line = folder
-			.map_err(anyhow::Error::msg)
-			.and_then(|folder| extract(&rom, &folder, &categories, cli.force, tty));
-		match line {
-			Ok(line) => eprintln!("{}: {line}", rom.display()),
-			Err(error) => {
-				eprintln!("{}: {error:#}", rom.display());
-				ok = false;
-			}
+	// `required_unless_present` guarantees a ROM once `--completions` is handled.
+	let rom = cli.rom.as_deref().unwrap();
+	match extract(rom, &rom.with_extension(""), &categories, cli.force, tty) {
+		Ok(line) => {
+			eprintln!("{}: {line}", rom.display());
+			ExitCode::SUCCESS
 		}
-	}
-	if ok {
-		ExitCode::SUCCESS
-	} else {
-		ExitCode::FAILURE
+		Err(error) => {
+			eprintln!("{}: {error:#}", rom.display());
+			ExitCode::FAILURE
+		}
 	}
 }
 
@@ -322,39 +277,5 @@ mod tests {
 			assert!(script.contains(&format!("--{category}")), "{category}");
 		}
 		assert!(script.contains("--completions"));
-	}
-
-	#[test]
-	fn plan_drops_repeats_and_refuses_shared_folders() {
-		let dir = std::env::temp_dir().join(format!("desmack-plan-{}", std::process::id()));
-		fs::create_dir_all(&dir).unwrap();
-		for name in ["smk.sfc", "smk.smc", "other.sfc"] {
-			fs::write(dir.join(name), b"").unwrap();
-		}
-		let roms = [
-			"smk.sfc",
-			"other.sfc",
-			"smk.smc",
-			"other.sfc",
-			"missing.sfc",
-		]
-		.map(|name| dir.join(name));
-
-		let jobs = plan(&roms);
-		fs::remove_dir_all(&dir).unwrap();
-
-		let outcome: Vec<_> = jobs
-			.iter()
-			.map(|(rom, folder)| (rom.file_name().unwrap().to_str().unwrap(), folder.is_ok()))
-			.collect();
-		assert_eq!(
-			outcome,
-			[
-				("smk.sfc", false),
-				("other.sfc", true),
-				("smk.smc", false),
-				("missing.sfc", false),
-			]
-		);
 	}
 }
