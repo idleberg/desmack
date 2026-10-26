@@ -36,7 +36,7 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
 ```
 desmack [FLAGS] <ROM>
   --drivers --items --hazards --cast --effects
-  --hud --font --screens --tilesets --skies --maps --samples
+  --hud --font --screens --tilesets --skies --maps --samples --sfx
   -a, --all      every category, no dialog
   -f, --force    overwrite without asking
   -c, --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
@@ -68,6 +68,7 @@ desmack [FLAGS] <ROM>
   maps/<course>/gp.map tt.map hazards.txt ai.txt start.txt
   maps/genres/<theme>.txt
   audio/samples/<nn>.wav
+  audio/sfx/<id>.spc
 ```
 
 - **Names**: courses, themes and drivers are lowercase and hyphenated, e.g. `mario-circuit-1`,
@@ -108,6 +109,10 @@ desmack [FLAGS] <ROM>
 - **Samples**: `audio/samples/<nn>.wav` is a BRR sample, numbered by its sample directory entry,
   mono 16-bit at 32 kHz (pitch `$1000`). A looping sample has its loop start in a `smpl` chunk.
   See [docs/research/audio.md](docs/research/audio.md).
+- **Sound effects**: `audio/sfx/<id>.spc` plays one sound effect in any SPC player, named by its
+  port 0 ID in hex (`20` to `68`, without `5e`, `60`, `63`). Each is the ARAM the game uploads at
+  boot, started after the driver's start-up with the ID as the last command it saw, so no
+  SPC700 code runs in desmack. The ID666 tag gives 5 s, longer than any effect lasts.
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race

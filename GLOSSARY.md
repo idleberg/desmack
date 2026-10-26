@@ -122,3 +122,7 @@ _Avoid_: menu, scene
 One recorded waveform the sound chip plays at any pitch; every song and sound effect is built
 from the same 26.
 _Avoid_: instrument, sound
+
+**Sound effect**:
+A short sound the game plays when something happens, e.g. picking up a coin or throwing a shell.
+_Avoid_: effect (that is a sprite), SFX in prose

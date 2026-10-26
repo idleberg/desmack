@@ -52,6 +52,8 @@ struct Cli {
 	maps: bool,
 	#[arg(long, help = "Extract the audio samples")]
 	samples: bool,
+	#[arg(long, help = "Extract the sound effects")]
+	sfx: bool,
 
 	#[arg(short, long, help = "Extract every category, without asking")]
 	all: bool,
@@ -83,11 +85,12 @@ enum Category {
 	Skies,
 	Maps,
 	Samples,
+	Sfx,
 }
 
 impl Category {
 	/// In flag order, which is also dialog order.
-	const ALL: [Category; 12] = [
+	const ALL: [Category; 13] = [
 		Category::Drivers,
 		Category::Items,
 		Category::Hazards,
@@ -100,6 +103,7 @@ impl Category {
 		Category::Skies,
 		Category::Maps,
 		Category::Samples,
+		Category::Sfx,
 	];
 
 	/// The dialog group, which is also the top-level output folder.
@@ -113,7 +117,7 @@ impl Category {
 			Category::Hud | Category::Font | Category::Screens => "graphics",
 			Category::Tilesets | Category::Skies => "textures",
 			Category::Maps => "maps",
-			Category::Samples => "audio",
+			Category::Samples | Category::Sfx => "audio",
 		}
 	}
 }
@@ -139,6 +143,7 @@ impl Cli {
 			self.skies,
 			self.maps,
 			self.samples,
+			self.sfx,
 		];
 		Category::ALL
 			.into_iter()
@@ -221,6 +226,7 @@ fn extract(category: Category, rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		Category::Skies => textures::skies(rom, folder),
 		Category::Maps => maps::extract(rom, folder),
 		Category::Samples => audio::samples(rom, folder),
+		Category::Sfx => audio::sfx(rom, folder),
 	}
 }
 

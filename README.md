@@ -18,6 +18,7 @@ The CLI extracts any of the following:
 - skies
 - course maps
 - audio samples
+- sound effects, as `.spc` files
 
 > [!NOTE]
 > `desmack` ships no game data. Bring your own ROM (Japan, USA or Europe).

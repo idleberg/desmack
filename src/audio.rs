@@ -12,6 +12,66 @@ const DIR: usize = 0x3C00;
 const DIR_ENTRIES: usize = 28;
 /// Pitch `$1000` plays a sample at this rate.
 const RATE: u32 = 32000;
+/// Port 0 IDs that play a sound effect; `$5E`, `$60` and `$63` make no sound alone.
+const SFX: std::ops::RangeInclusive<u8> = 0x20..=0x68;
+/// The play length in each `.spc`'s tag.
+const SFX_SECONDS: u32 = 5;
+/// The driver's state once its start-up has run, which is the same every time: RAM (I/O registers
+/// `$F1`, `$F2`, `$FA` included), then CPU registers PC, A, X, Y, PSW, SP, then DSP registers.
+/// Starting there with an ID in `$00` and port 0 at 0 plays the ID as if the game had just sent
+/// it. Captured in snes_spc; the stale stack below SP is left out.
+const STARTED: [(u16, u8); 38] = [
+	(0x0012, 0x72),
+	(0x0014, 0x88),
+	(0x0015, 0x3C),
+	(0x0018, 0xA4),
+	(0x0019, 0x54),
+	(0x0020, 0x3B),
+	(0x0043, 0xC0),
+	(0x0047, 0x80),
+	(0x0048, 0x20),
+	(0x004C, 0x01),
+	(0x004D, 0x01),
+	(0x0051, 0xE0),
+	(0x0053, 0x10),
+	(0x005E, 0x80),
+	(0x00E3, 0x01),
+	(0x00F1, 0x01),
+	(0x00F2, 0x2C),
+	(0x00FA, 0x10),
+	(0x022E, 0x70),
+	(0x022F, 0x05),
+	(0x0361, 0x01),
+	(0x0363, 0x01),
+	(0x0365, 0x01),
+	(0x0367, 0x01),
+	(0x0369, 0x01),
+	(0x036B, 0x01),
+	(0x036D, 0x01),
+	(0x036F, 0x01),
+	(0x0390, 0x03),
+	(0x0391, 0x03),
+	(0x03B2, 0x47),
+	(0x03B3, 0x47),
+	(0x03B4, 0x0E),
+	(0x03C0, 0x03),
+	(0x03D4, 0x11),
+	(0x03D5, 0x11),
+	(0x03D6, 0x22),
+	(0x03D7, 0x22),
+];
+const STARTED_CPU: [u8; 7] = [0xAD, 0x08, 0x38, 0x61, 0x00, 0x03, 0xCF];
+const STARTED_DSP: [(usize, u8); 9] = [
+	(0x0C, 0x60),
+	(0x1C, 0x60),
+	(0x5D, 0x3C),
+	(0x6C, 0x20),
+	(0x6D, 0xF7),
+	(0x75, 0xFF),
+	(0x76, 0x80),
+	(0x77, 0xB8),
+	(0x7D, 0x01),
+];
 
 pub fn samples(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 	let dir = folder.join("audio/samples");
@@ -28,6 +88,46 @@ pub fn samples(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		fs::write(dir.join(format!("{index:02}.wav")), wav(&samples, restart))?;
 	}
 	Ok(())
+}
+
+pub fn sfx(rom: &Rom, folder: &Path) -> anyhow::Result<()> {
+	let dir = folder.join("audio/sfx");
+	fs::create_dir_all(&dir)?;
+	let ram = aram(rom)?;
+	for id in SFX.filter(|id| ![0x5E, 0x60, 0x63].contains(id)) {
+		fs::write(dir.join(format!("{id:02x}.spc")), spc(&ram, id))?;
+	}
+	Ok(())
+}
+
+/// A `.spc` (v0.30, with an ID666 text tag) that plays `id` once a player loads it.
+fn spc(ram: &[u8], id: u8) -> Vec<u8> {
+	let mut file = vec![0; 0x10200];
+	file[..35].copy_from_slice(b"SNES-SPC700 Sound File Data v0.30\x1A\x1A");
+	file[0x23] = 26;
+	file[0x24] = 30;
+	file[0x25..0x2C].copy_from_slice(&STARTED_CPU);
+	let text = |file: &mut Vec<u8>, at: usize, text: &str| {
+		file[at..at + text.len()].copy_from_slice(text.as_bytes())
+	};
+	text(&mut file, 0x2E, &format!("Sound effect {id:02X}"));
+	text(&mut file, 0x4E, "Super Mario Kart");
+	text(&mut file, 0x6E, "desmack");
+	// Seconds to play and the fade in ms; the longest effect ends within that.
+	text(&mut file, 0xA9, &SFX_SECONDS.to_string());
+	text(&mut file, 0xAC, "0");
+	let aram = &mut file[0x100..0x10100];
+	aram.copy_from_slice(ram);
+	for (address, value) in STARTED {
+		aram[usize::from(address)] = value;
+	}
+	// The last ID the driver saw, with port 0 back at 0.
+	aram[0x00] = id;
+	aram[0xF4..0xF8].fill(0);
+	for (register, value) in STARTED_DSP {
+		file[0x10100 + register] = value;
+	}
+	file
 }
 
 /// ARAM after the boot upload: blocks of `u16 length, u16 address, data`, ended by a block of
@@ -204,6 +304,26 @@ mod tests {
 			2640 * 2
 		);
 		assert_eq!(&first[44 + 2640 * 2..][..4], b"smpl");
+
+		sfx(&rom, &folder).unwrap();
+		assert_eq!(fs::read_dir(folder.join("audio/sfx")).unwrap().count(), 70);
 		fs::remove_dir_all(folder).unwrap();
+	}
+
+	#[test]
+	fn spc_starts_after_the_driver_start_up() {
+		let file = spc(&[0xFF; 0x10000], 0x20);
+		assert_eq!(file.len(), 0x10200);
+		assert_eq!(&file[..33], b"SNES-SPC700 Sound File Data v0.30");
+		// PC $08AD, then the title and the length.
+		assert_eq!(&file[0x25..0x27], [0xAD, 0x08]);
+		assert_eq!(&file[0x2E..0x3D], b"Sound effect 20");
+		assert_eq!(&file[0xA9..0xAC], b"5\0\0");
+		let aram = &file[0x100..0x10100];
+		assert_eq!(aram[0x00], 0x20);
+		assert_eq!(aram[0xF4..0xF8], [0; 4]);
+		assert_eq!(aram[0x0012], 0x72);
+		assert_eq!(aram[0x0013], 0xFF);
+		assert_eq!(file[0x10100 + 0x5D], 0x3C);
 	}
 }
