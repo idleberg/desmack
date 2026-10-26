@@ -50,9 +50,17 @@ flag.
 
 Shell completions:
 
-```sh
+```shell
+# bash — needs bash-completion installed
+desmack --completions bash > ~/.local/share/bash-completion/completions/desmack
+
+# zsh — any directory on $fpath, with compinit enabled
+desmack --completions zsh > ~/.zfunc/_desmack
+
+# fish
 desmack --completions fish > ~/.config/fish/completions/desmack.fish
 ```
+
 
 ## Licence
 
