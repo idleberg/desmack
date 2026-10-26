@@ -36,14 +36,14 @@ desmack is a Rust CLI that extracts the assets of a Super Mario Kart SNES ROM. T
 ```
 desmack [FLAGS] <ROM>
   --drivers --items --hazards --cast --effects
-  --hud --font --screens --tilesets --skies --maps
+  --hud --font --screens --tilesets --skies --maps --samples
   -a, --all      every category, no dialog
   -f, --force    overwrite without asking
   -c, --completions <SHELL>   print a completion script to stdout and exit (as in ardent)
 ```
 
 - **No category flag, stdin is a TTY**: clark `multiselect` dialogs, for their `a`/`i` shortcuts.
-  The first picks among sprites, graphics, textures and maps, then each picked group with more than
+  The first picks among sprites, graphics, textures, maps and audio, then each picked group with more than
   one category gets a dialog of its own. Nothing starts selected, and any dialog can be left
   empty. Leaving them all empty extracts nothing and says so.
 - **No category flag, no TTY**: everything is extracted.
@@ -67,6 +67,7 @@ desmack [FLAGS] <ROM>
   textures/skies/<theme>-near.png  <theme>-far.png
   maps/<course>/gp.map tt.map hazards.txt ai.txt start.txt
   maps/genres/<theme>.txt
+  audio/samples/<nn>.wav
 ```
 
 - **Names**: courses, themes and drivers are lowercase and hyphenated, e.g. `mario-circuit-1`,
@@ -104,6 +105,9 @@ desmack [FLAGS] <ROM>
 - **Icons**: `graphics/icons/` holds the menus' 16×16 sprites, written with the screens: each cup's
   icon (`mushroom`, `flower`, `star`) and the trophies cup select shows,
   `<class>-<bronze|silver|gold>.png`.
+- **Samples**: `audio/samples/<nn>.wav` is a BRR sample, numbered by its sample directory entry,
+  mono 16-bit at 32 kHz (pitch `$1000`). A looping sample has its loop start in a `smpl` chunk.
+  See [docs/research/audio.md](docs/research/audio.md).
 - **`gp.map`, `tt.map`**: 128 lines, each holding 128 hex tile indices separated by spaces. The GP
   map includes the Overlay and the TT map doesn't.
 - **`hazards.txt`**: one `x y` per line, in tiles, with `match-race` appended for Match Race

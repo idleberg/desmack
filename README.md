@@ -17,6 +17,7 @@ The CLI extracts any of the following:
 - tilesets
 - skies
 - course maps
+- audio samples
 
 > [!NOTE]
 > `desmack` ships no game data. Bring your own ROM (Japan, USA or Europe).

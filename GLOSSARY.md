@@ -115,3 +115,10 @@ The game's letters and digits.
 **Screen**:
 A full picture outside the race, e.g. the title, a select screen or the podium.
 _Avoid_: menu, scene
+
+## Audio
+
+**Sample**:
+One recorded waveform the sound chip plays at any pitch; every song and sound effect is built
+from the same 26.
+_Avoid_: instrument, sound

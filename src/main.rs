@@ -9,6 +9,7 @@ use anyhow::{Context, anyhow};
 use clap::{CommandFactory, Parser};
 use clap_complete::{Shell, generate};
 
+mod audio;
 mod decompress;
 mod graphics;
 mod maps;
@@ -49,6 +50,8 @@ struct Cli {
 	skies: bool,
 	#[arg(long, help = "Extract the course maps")]
 	maps: bool,
+	#[arg(long, help = "Extract the audio samples")]
+	samples: bool,
 
 	#[arg(short, long, help = "Extract every category, without asking")]
 	all: bool,
@@ -79,11 +82,12 @@ enum Category {
 	Tilesets,
 	Skies,
 	Maps,
+	Samples,
 }
 
 impl Category {
 	/// In flag order, which is also dialog order.
-	const ALL: [Category; 11] = [
+	const ALL: [Category; 12] = [
 		Category::Drivers,
 		Category::Items,
 		Category::Hazards,
@@ -95,6 +99,7 @@ impl Category {
 		Category::Tilesets,
 		Category::Skies,
 		Category::Maps,
+		Category::Samples,
 	];
 
 	/// The dialog group, which is also the top-level output folder.
@@ -108,6 +113,7 @@ impl Category {
 			Category::Hud | Category::Font | Category::Screens => "graphics",
 			Category::Tilesets | Category::Skies => "textures",
 			Category::Maps => "maps",
+			Category::Samples => "audio",
 		}
 	}
 }
@@ -132,6 +138,7 @@ impl Cli {
 			self.tilesets,
 			self.skies,
 			self.maps,
+			self.samples,
 		];
 		Category::ALL
 			.into_iter()
@@ -155,7 +162,7 @@ fn choose(cli: &Cli, tty: bool) -> anyhow::Result<Option<Vec<Category>>> {
 	// One multiselect per level rather than a group_multiselect, for its `a`/`i` shortcuts. A group
 	// with one category needs no second dialog.
 	let mut dialog = clark::multiselect("What should desmack extract?").required(false);
-	for group in ["sprites", "graphics", "textures", "maps"] {
+	for group in ["sprites", "graphics", "textures", "maps", "audio"] {
 		dialog = dialog.option(group);
 	}
 	let Some(groups) = dialog.interact_opt()? else {
@@ -213,6 +220,7 @@ fn extract(category: Category, rom: &Rom, folder: &Path) -> anyhow::Result<()> {
 		Category::Tilesets => textures::tilesets(rom, folder),
 		Category::Skies => textures::skies(rom, folder),
 		Category::Maps => maps::extract(rom, folder),
+		Category::Samples => audio::samples(rom, folder),
 	}
 }
 
