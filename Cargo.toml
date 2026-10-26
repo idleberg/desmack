@@ -1,6 +1,6 @@
 [package]
 name = "desmack"
-version = "0.2.0"
+version = "0.3.0"
 description = "Extracts the assets of a SMK ROM (SNES)"
 authors = ["Jan T. Sott"]
 repository = "https://github.com/idleberg/desmack"
