@@ -14,7 +14,7 @@ categories = ["command-line-utilities"]
 anyhow = "1"
 clap = { version = "4", default-features = false, features = ["std", "derive", "help", "usage", "error-context", "suggestions"] }
 clap_complete = "4"
-clark = "0.2"
+clark = "0.3"
 crc32fast = "1"
 png = "0.17"
 
